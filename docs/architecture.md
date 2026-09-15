@@ -49,5 +49,19 @@ NYC TLC monthly Parquet
 - Present analytical and OLAP views
 - Present forecasts, demand levels, and recommendations
 
+## Team integration gates
+
+### Gate A: staging to warehouse
+
+Person 1 provides `stg_yellow_trip_valid`, including stable canonical names,
+types, source lineage, and reconciled data-quality classification. Person 2
+builds dimensions and facts from this interface rather than querying RAW.
+
+### Gate B: warehouse to DSS
+
+Person 2 provides `mart_zone_hour_demand` at date x hour x pickup-zone grain.
+Person 3 builds forecasting features and recommendations from that interface
+rather than querying `fact_trip` directly.
+
 Implementation details, deployment topology, and service configuration remain
 TBD.
