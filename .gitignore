@@ -1,0 +1,33 @@
+# Environment and local configuration
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Raw data
+data/raw/
+
+# Airflow runtime files
+airflow/logs/
+src/airflow/logs/
+
+# dbt generated files
+src/dbt/target/
+src/dbt/logs/
+src/dbt/packages/
+
+# Model artifacts
+artifacts/models/
+models/artifacts/
+*.joblib
+*.pkl
+
+# Local database volumes
+.postgres-data/
