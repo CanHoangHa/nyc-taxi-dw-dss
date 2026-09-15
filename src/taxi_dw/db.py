@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 import psycopg
@@ -13,7 +13,7 @@ from taxi_dw.config import DatabaseSettings
 @contextmanager
 def open_connection(
     settings: DatabaseSettings | None = None,
-) -> Iterator[psycopg.Connection]:
+) -> Generator[psycopg.Connection, None, None]:
     """Open a transactional PostgreSQL connection and close it on exit."""
 
     database_settings = settings or DatabaseSettings.from_environment()
