@@ -1,5 +1,6 @@
 # Milestone P1.1: PostgreSQL connectivity.
 psycopg[binary]>=3.2,<4.0
+python-dotenv>=1.0,<2.0
 
 # dbt, Airflow, ingestion, DSS, and dashboard dependencies will be added only
 # when their implementation milestones begin.

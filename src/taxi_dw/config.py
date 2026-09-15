@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 
+from dotenv import load_dotenv
+
 
 class ConfigurationError(ValueError):
     """Raised when required application configuration is missing or invalid."""
@@ -54,9 +56,14 @@ class DatabaseSettings:
     def from_environment(
         cls, environment: Mapping[str, str] | None = None
     ) -> DatabaseSettings:
-        """Build settings from a mapping, defaulting to the process environment."""
+        """Build settings from a mapping, loading local ``.env`` when needed."""
 
-        values = os.environ if environment is None else environment
+        if environment is None:
+            load_dotenv(override=False)
+            values = os.environ
+        else:
+            values = environment
+
         return cls(
             host=values.get("POSTGRES_HOST", "localhost").strip() or "localhost",
             port=_bounded_integer(

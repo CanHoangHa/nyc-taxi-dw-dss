@@ -1,11 +1,30 @@
 """Tests for environment-backed project configuration."""
 
+import os
 import unittest
+from unittest.mock import patch
 
 from taxi_dw.config import ConfigurationError, DatabaseSettings
 
 
 class DatabaseSettingsTests(unittest.TestCase):
+    def test_loads_dotenv_without_overriding_process_environment(self) -> None:
+        process_environment = {
+            "POSTGRES_DB": "process_database",
+            "POSTGRES_USER": "process_user",
+            "POSTGRES_PASSWORD": "process_password",
+        }
+
+        with (
+            patch.dict(os.environ, process_environment, clear=True),
+            patch("taxi_dw.config.load_dotenv") as load_dotenv_mock,
+        ):
+            settings = DatabaseSettings.from_environment()
+
+        load_dotenv_mock.assert_called_once_with(override=False)
+        self.assertEqual(settings.database, "process_database")
+        self.assertEqual(settings.user, "process_user")
+
     def test_reads_valid_environment(self) -> None:
         settings = DatabaseSettings.from_environment(
             {

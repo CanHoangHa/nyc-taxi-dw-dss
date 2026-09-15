@@ -79,6 +79,10 @@ docker compose up -d postgres
 docker compose ps
 ```
 
+Python settings also load `.env` automatically for local development. Existing
+process environment variables take precedence, so Docker, Airflow, and CI can
+inject configuration without being overwritten by the local file.
+
 The database port is bound to localhost only.
 
 The first initialization creates the `audit`, `raw`, `staging`, `dw`, and
