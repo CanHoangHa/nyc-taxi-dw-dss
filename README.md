@@ -2,8 +2,9 @@
 
 ## Status
 
-Planning and repository setup only. No ingestion pipeline, database, dbt model,
-Airflow DAG, forecasting model, or dashboard has been implemented yet.
+The ingestion contract and minimal local PostgreSQL infrastructure are under
+development. No dataset has been downloaded, and no ingestion pipeline, dbt
+model, Airflow DAG, forecasting model, or dashboard has been implemented yet.
 
 ## Objective
 
@@ -56,3 +57,39 @@ docs/                 Architecture and design documentation
 
 The frozen scope and planned interfaces are documented in `docs/`. Full raw
 NYC TLC data must not be committed to this repository.
+
+## Local PostgreSQL setup
+
+Prerequisites:
+
+- Docker with Docker Compose v2
+- Python 3.10 or later for project modules
+
+Create a local environment file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Change the example password in `.env`, then validate and start PostgreSQL:
+
+```powershell
+docker compose config
+docker compose up -d postgres
+docker compose ps
+```
+
+The database port is bound to localhost only.
+
+The first initialization creates the `audit`, `raw`, `staging`, `dw`, and
+`mart` schemas from `sql/001_create_schemas.sql`. PostgreSQL initialization
+scripts run only for a new empty database volume.
+
+Stop the service without deleting its named volume:
+
+```powershell
+docker compose down
+```
+
+No Airflow, dbt, ingestion, DSS, or dashboard service is included in Compose at
+this milestone.
