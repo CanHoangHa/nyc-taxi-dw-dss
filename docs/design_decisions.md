@@ -16,6 +16,7 @@ The following decisions are frozen for the initial project scope:
 | Main DSS mart | `mart_zone_hour_demand` |
 | Zone modeling | One role-playing `dim_taxi_zone` for pickup and drop-off |
 | Data-quality states | Valid, quarantined, and rejected |
+| January source schema | All 19 contract fields confirmed; exact types linked from the source profile |
 
 Exact schemas, data-quality thresholds, model choice, forecast thresholds,
 infrastructure configuration, and dashboard layout remain intentionally TBD.
@@ -42,7 +43,6 @@ frozen after Person 2 reviews the warehouse-consumer impact:
 
 Still intentionally unresolved for later milestones:
 
-- Exact January Parquet physical types and field casing
 - Upper data-quality bounds for duration and distance
 - Physical materialization of staging models
 - Transactional implementation of `replace-month`

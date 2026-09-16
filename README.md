@@ -2,9 +2,11 @@
 
 ## Status
 
-The ingestion contract and minimal local PostgreSQL infrastructure are under
-development. No dataset has been downloaded, and no ingestion pipeline, dbt
-model, Airflow DAG, forecasting model, or dashboard has been implemented yet.
+The ingestion contract, local PostgreSQL infrastructure, and reproducible
+January 2024 source profiler are implemented. The source Parquet may exist
+locally under the Git-ignored `data/raw` directory, but no RAW loading pipeline,
+dbt model, Airflow DAG, forecasting model, or dashboard has been implemented
+yet.
 
 ## Objective
 
@@ -97,3 +99,28 @@ docker compose down
 
 No Airflow, dbt, ingestion, DSS, or dashboard service is included in Compose at
 this milestone.
+
+## January 2024 source profile
+
+Install project dependencies and place the official January Yellow Taxi
+Parquet file at:
+
+```text
+data/raw/yellow/2024/01/yellow_tripdata_2024-01.parquet
+```
+
+Then run the bounded-memory profiler from the repository root:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+.\.venv\Scripts\python.exe -m taxi_dw.source_profile `
+  --path data/raw/yellow/2024/01/yellow_tripdata_2024-01.parquet `
+  --year 2024 `
+  --month 1 `
+  --zone-lookup data/reference/taxi_zone_lookup.csv `
+  --output docs/profiles/yellow_tripdata_2024_01.md
+```
+
+The generated report records the source checksum, physical schema, exact
+counts and bounds, sampled quantiles, and initial data-quality indicators. The
+Parquet artifact remains outside Git.

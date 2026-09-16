@@ -4,7 +4,7 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: proposed for Person 2 review
-- Implementation status: not started
+- Implementation status: January 2024 source profile complete; ingestion not started
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
@@ -90,10 +90,21 @@ congestion_surcharge
 Airport_fee
 ```
 
-The January source-profile task will confirm exact Parquet physical types and
-field casing before RAW DDL is implemented. Missing required fields fail source
-validation; unexpected additional fields are recorded and require an explicit
-contract decision.
+The January 2024 source profile confirmed all 19 expected fields, with no
+missing or unexpected fields. The reproducible evidence is recorded in
+`docs/profiles/yellow_tripdata_2024_01.md`.
+
+Observed Parquet types are:
+
+- `int32`: `VendorID`, `PULocationID`, and `DOLocationID`
+- `int64`: `passenger_count`, `RatecodeID`, and `payment_type`
+- `timestamp[us]`: pickup and drop-off timestamps
+- `large_string`: `store_and_fwd_flag`
+- `double`: distance and all monetary source fields
+
+RAW DDL should preserve these source-compatible shapes. Missing required fields
+fail source validation; unexpected additional fields are recorded and require
+an explicit contract decision.
 
 ### Required lineage fields
 
