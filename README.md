@@ -2,11 +2,11 @@
 
 ## Status
 
-The ingestion contract, local PostgreSQL infrastructure, safe monthly source
-downloader, strict source validator, and reproducible January 2024 source
-profiler are implemented. The source Parquet may exist locally under the
-Git-ignored `data/raw` directory, but no RAW loading pipeline, dbt model,
-Airflow DAG, forecasting model, or dashboard has been implemented yet.
+The ingestion contract, local PostgreSQL infrastructure, audit and RAW tables,
+safe monthly source downloader, strict source validator, and reproducible
+January 2024 source profiler are implemented. The source Parquet may exist
+locally under the Git-ignored `data/raw` directory, but no RAW loader, dbt
+model, Airflow DAG, forecasting model, or dashboard has been implemented yet.
 
 ## Objective
 
@@ -45,15 +45,15 @@ will live outside DAG definitions.
 ## Repository structure
 
 ```text
-src/taxi_dw/          Planned Python ingestion and shared modules
+src/taxi_dw/          Python ingestion and shared modules
 src/airflow/dags/     Planned Airflow DAG definitions
 src/dbt/              Planned dbt project files
 src/dss/              Planned forecasting and recommendation components
 src/dashboard/        Planned Streamlit application
-sql/                  Planned database bootstrap SQL
+sql/                  Database bootstrap and ingestion-table DDL
 data/sample/          Small, Git-safe samples only
 data/reference/       Small reference datasets
-tests/                Planned automated tests
+tests/                Unit and PostgreSQL integration tests
 docs/                 Architecture and design documentation
 ```
 
@@ -88,8 +88,29 @@ inject configuration without being overwritten by the local file.
 The database port is bound to localhost only.
 
 The first initialization creates the `audit`, `raw`, `staging`, `dw`, and
-`mart` schemas from `sql/001_create_schemas.sql`. PostgreSQL initialization
-scripts run only for a new empty database volume.
+`mart` schemas, then creates `audit.etl_batch` and `raw.yellow_trip` from the
+numbered scripts under `sql/`. PostgreSQL initialization scripts run only for a
+new empty database volume.
+
+For an existing local volume created before a new SQL script was added, apply
+that script explicitly:
+
+```powershell
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 `
+  -U nyc_taxi -d nyc_taxi_dw `
+  -f /docker-entrypoint-initdb.d/002_create_ingestion_tables.sql
+```
+
+Run all unit and database integration tests while PostgreSQL is healthy:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+$env:RUN_DB_TESTS = "1"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Without `RUN_DB_TESTS=1`, database integration tests are discovered and
+skipped; unit tests still run normally.
 
 Stop the service without deleting its named volume:
 

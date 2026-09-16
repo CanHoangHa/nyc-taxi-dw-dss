@@ -4,7 +4,7 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: proposed for Person 2 review
-- Implementation status: January 2024 profiling and strict source validation complete; RAW ingestion not started
+- Implementation status: audit and RAW tables implemented; RAW loader not started
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
@@ -46,8 +46,11 @@ materializations, and performance choices remain implementation decisions.
 | `status` | `text` | `started`, `succeeded`, `failed`, or `skipped` |
 | `error_message` | `text` | Failure context, otherwise null |
 
-Final constraints and the mechanism used for dbt to update classification counts
-are TBD.
+Database constraints enforce valid status values, consistent completion
+timestamps, non-negative counts, successful source-to-RAW count equality, and
+complete classification-count reconciliation when those three counts are
+populated. The mechanism used for dbt to update classification counts remains
+TBD.
 
 ## Ingestion output: `raw.yellow_trip`
 
@@ -102,9 +105,9 @@ Observed Parquet types are:
 - `large_string`: `store_and_fwd_flag`
 - `double`: distance and all monetary source fields
 
-RAW DDL should preserve these source-compatible shapes. Missing required fields
-fail source validation; unexpected additional fields are recorded and require
-an explicit contract decision.
+RAW DDL preserves these source-compatible shapes in `raw.yellow_trip`. Missing
+required fields fail source validation; unexpected additional fields are
+recorded and require an explicit contract decision.
 
 ### Required lineage fields
 

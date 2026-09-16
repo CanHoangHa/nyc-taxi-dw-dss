@@ -18,9 +18,26 @@ The following decisions are frozen for the initial project scope:
 | Data-quality states | Valid, quarantined, and rejected |
 | January source schema | All 19 contract fields confirmed; exact types linked from the source profile |
 | Unexpected source columns | Fail source validation until the contract is explicitly reviewed |
+| RAW payload naming | Preserve exact TLC source names; dbt owns canonical names |
+| RAW source identity | Dataset + source year + source month + zero-based source row number |
+| Audit reconciliation | A succeeded batch requires source count = loaded count |
 
-Exact schemas, data-quality thresholds, model choice, forecast thresholds,
-infrastructure configuration, and dashboard layout remain intentionally TBD.
+Staging and warehouse schemas, data-quality thresholds, model choice, forecast
+thresholds, infrastructure configuration, and dashboard layout remain
+intentionally TBD.
+
+## Planned RAW-load transaction boundary
+
+The loader milestone will use three short transaction phases:
+
+1. Insert and commit the `started` audit attempt.
+2. Load the complete RAW month and update that attempt to `succeeded` in one
+   transaction.
+3. If loading fails, roll back phase 2 before updating the committed audit
+   attempt to `failed` in a separate transaction.
+
+This keeps failure history while preventing a partially loaded RAW batch from
+becoming visible.
 
 ## Gate A contract decisions proposed for team approval
 
