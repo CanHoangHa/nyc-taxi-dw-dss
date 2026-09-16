@@ -15,29 +15,8 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from taxi_dw.source_profile_report import render_markdown
+from taxi_dw.source_contract import EXPECTED_COLUMNS
 
-
-EXPECTED_COLUMNS = (
-    "VendorID",
-    "tpep_pickup_datetime",
-    "tpep_dropoff_datetime",
-    "passenger_count",
-    "trip_distance",
-    "RatecodeID",
-    "store_and_fwd_flag",
-    "PULocationID",
-    "DOLocationID",
-    "payment_type",
-    "fare_amount",
-    "extra",
-    "mta_tax",
-    "tip_amount",
-    "tolls_amount",
-    "improvement_surcharge",
-    "total_amount",
-    "congestion_surcharge",
-    "Airport_fee",
-)
 
 MONETARY_COLUMNS = EXPECTED_COLUMNS[10:]
 

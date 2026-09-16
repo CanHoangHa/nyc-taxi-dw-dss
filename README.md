@@ -3,10 +3,10 @@
 ## Status
 
 The ingestion contract, local PostgreSQL infrastructure, safe monthly source
-downloader, and reproducible January 2024 source profiler are implemented. The
-source Parquet may exist locally under the Git-ignored `data/raw` directory,
-but no RAW loading pipeline, dbt model, Airflow DAG, forecasting model, or
-dashboard has been implemented yet.
+downloader, strict source validator, and reproducible January 2024 source
+profiler are implemented. The source Parquet may exist locally under the
+Git-ignored `data/raw` directory, but no RAW loading pipeline, dbt model,
+Airflow DAG, forecasting model, or dashboard has been implemented yet.
 
 ## Objective
 
@@ -139,3 +139,17 @@ and renames the file only after a complete response. Temporary connection and
 server errors are retried; HTTP 404 is not. If the completed destination file
 already exists, it is reused without an HTTP request or overwrite and its
 checksum is calculated again.
+
+Validate the downloaded artifact before database loading:
+
+```powershell
+.\.venv\Scripts\python.exe -m taxi_dw.source_validation `
+  --year 2024 `
+  --month 1
+```
+
+Validation recalculates the checksum, opens the Parquet footer, requires at
+least one row, and compares field names and physical types with the frozen 2024
+source contract. Missing, unexpected, incorrectly cased, or differently typed
+fields fail with a specific message. Record-level anomalies remain staging
+data-quality work and do not make the complete source artifact invalid.

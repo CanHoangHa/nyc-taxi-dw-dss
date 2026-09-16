@@ -4,7 +4,7 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: proposed for Person 2 review
-- Implementation status: January 2024 source profile complete; ingestion not started
+- Implementation status: January 2024 profiling and strict source validation complete; RAW ingestion not started
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
