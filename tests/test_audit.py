@@ -6,7 +6,15 @@ import unittest
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from taxi_dw.audit import AuditStateError, mark_failed, mark_succeeded, start_batch
+from taxi_dw.audit import (
+    AuditStateError,
+    SuccessfulBatch,
+    find_latest_successful_batch,
+    mark_failed,
+    mark_succeeded,
+    record_skipped_batch,
+    start_batch,
+)
 from taxi_dw.source import YellowTaxiSource
 
 
@@ -53,6 +61,38 @@ class AuditTests(unittest.TestCase):
 
         self.connection.commit.assert_not_called()
         self.connection.rollback.assert_not_called()
+
+    def test_finds_latest_successful_batch(self) -> None:
+        batch_id = uuid4()
+        self.connection.execute.return_value.fetchone.return_value = (
+            batch_id,
+            "a" * 64,
+            3,
+            3,
+        )
+
+        result = find_latest_successful_batch(
+            self.connection,
+            self.artifact,
+        )
+
+        self.assertEqual(
+            result,
+            SuccessfulBatch(batch_id, "a" * 64, 3, 3),
+        )
+
+    def test_records_skipped_attempt_with_zero_loaded_rows(self) -> None:
+        batch_id = uuid4()
+
+        result = record_skipped_batch(
+            self.connection,
+            self.artifact,
+            batch_id=batch_id,
+        )
+
+        parameters = self.connection.execute.call_args.args[1]
+        self.assertEqual(result, batch_id)
+        self.assertEqual(parameters[-2:], ("a" * 64, 3))
 
     def test_rejects_update_when_batch_is_not_started(self) -> None:
         self.connection.execute.return_value.rowcount = 0

@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import sys
 from uuid import UUID
+
+import psycopg
 
 from taxi_dw import audit
 from taxi_dw.config import DatabaseSettings
 from taxi_dw.db import open_connection
 from taxi_dw.downloader import download_source
+from taxi_dw.month_lock import locked_source_month
 from taxi_dw.raw_loader import DEFAULT_BATCH_SIZE, copy_raw_rows
 from taxi_dw.source import YellowTaxiSource
 from taxi_dw.source_validation import ValidatedSourceArtifact, validate_source
@@ -18,7 +23,7 @@ from taxi_dw.source_validation import ValidatedSourceArtifact, validate_source
 
 @dataclass(frozen=True, slots=True)
 class IngestionResult:
-    """Summary of one successful monthly RAW load."""
+    """Summary of one successful or skipped monthly ingestion attempt."""
 
     batch_id: UUID
     source_row_count: int
@@ -40,33 +45,76 @@ def ingest_validated_source(
     settings: DatabaseSettings | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> IngestionResult:
-    """Load one validated artifact with no visible partial RAW batch."""
+    """Load or skip one artifact safely under a source-month lock."""
 
     database_settings = settings or DatabaseSettings.from_environment()
     with open_connection(database_settings) as connection:
-        batch_id = audit.start_batch(connection, artifact)
-        connection.commit()
-
-        try:
-            loaded_row_count = copy_raw_rows(
+        with locked_source_month(connection, artifact.source):
+            successful_batch = audit.find_latest_successful_batch(
                 connection,
                 artifact,
-                batch_id,
+            )
+            if successful_batch is not None:
+                if successful_batch.source_file_sha256 == artifact.sha256:
+                    batch_id = audit.record_skipped_batch(connection, artifact)
+                    connection.commit()
+                    return IngestionResult(
+                        batch_id=batch_id,
+                        source_row_count=artifact.row_count,
+                        loaded_row_count=0,
+                        status="skipped",
+                    )
+
+                batch_id = audit.start_batch(connection, artifact)
+                connection.commit()
+                message = (
+                    "Checksum conflict for an already successful source month: "
+                    f"existing={successful_batch.source_file_sha256}, "
+                    f"incoming={artifact.sha256}. "
+                    "replace-month is not implemented; RAW was not changed."
+                )
+                audit.mark_failed(connection, batch_id, message)
+                connection.commit()
+                raise IngestionError(batch_id, message)
+
+            return _load_new_batch(
+                connection,
+                artifact,
+                password=database_settings.password,
                 batch_size=batch_size,
             )
-            if loaded_row_count != artifact.row_count:
-                raise RuntimeError(
-                    "RAW row count mismatch: "
-                    f"expected {artifact.row_count}, loaded {loaded_row_count}"
-                )
-            audit.mark_succeeded(connection, batch_id, loaded_row_count)
-            connection.commit()
-        except Exception as error:
-            connection.rollback()
-            safe_message = _safe_error_message(error, database_settings.password)
-            audit.mark_failed(connection, batch_id, safe_message)
-            connection.commit()
-            raise IngestionError(batch_id, safe_message) from error
+
+
+def _load_new_batch(
+    connection: psycopg.Connection,
+    artifact: ValidatedSourceArtifact,
+    *,
+    password: str,
+    batch_size: int,
+) -> IngestionResult:
+    batch_id = audit.start_batch(connection, artifact)
+    connection.commit()
+
+    try:
+        loaded_row_count = copy_raw_rows(
+            connection,
+            artifact,
+            batch_id,
+            batch_size=batch_size,
+        )
+        if loaded_row_count != artifact.row_count:
+            raise RuntimeError(
+                "RAW row count mismatch: "
+                f"expected {artifact.row_count}, loaded {loaded_row_count}"
+            )
+        audit.mark_succeeded(connection, batch_id, loaded_row_count)
+        connection.commit()
+    except Exception as error:
+        connection.rollback()
+        safe_message = _safe_error_message(error, password)
+        audit.mark_failed(connection, batch_id, safe_message)
+        connection.commit()
+        raise IngestionError(batch_id, safe_message) from error
 
     return IngestionResult(
         batch_id=batch_id,
@@ -84,20 +132,45 @@ def _safe_error_message(error: Exception, password: str) -> str:
 
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--year", type=int, required=True)
-    parser.add_argument("--month", type=int, required=True)
-    parser.add_argument("--root", type=Path, default=Path("data/raw"))
-    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    commands = parser.add_subparsers(dest="command", required=True)
+    run_parser = commands.add_parser(
+        "run",
+        help="download, validate, and ingest one source month",
+    )
+    run_parser.add_argument(
+        "--dataset",
+        choices=("yellow_taxi",),
+        default="yellow_taxi",
+    )
+    run_parser.add_argument("--year", type=int, required=True)
+    run_parser.add_argument("--month", type=int, required=True)
+    run_parser.add_argument("--root", type=Path, default=Path("data/raw"))
+    run_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+    )
     options = parser.parse_args(arguments)
 
-    source = YellowTaxiSource(options.year, options.month)
-    artifact = validate_source(download_source(source, root=options.root))
-    result = ingest_validated_source(
-        artifact,
-        batch_size=options.batch_size,
-    )
+    try:
+        source = YellowTaxiSource(options.year, options.month)
+        artifact = validate_source(download_source(source, root=options.root))
+        result = ingest_validated_source(
+            artifact,
+            batch_size=options.batch_size,
+        )
+    except Exception as error:
+        password = os.environ.get("POSTGRES_PASSWORD", "")
+        print(
+            f"failed: {_safe_error_message(error, password)}",
+            file=sys.stderr,
+        )
+        return 1
+
     print(
-        f"{result.status}: batch_id={result.batch_id} "
+        f"status={result.status} batch_id={result.batch_id} "
+        f"dataset={options.dataset} "
+        f"source_month={options.year}-{options.month:02d} "
         f"source_rows={result.source_row_count:,} "
         f"loaded_rows={result.loaded_row_count:,}"
     )

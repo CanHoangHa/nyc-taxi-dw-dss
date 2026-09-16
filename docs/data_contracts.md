@@ -4,7 +4,7 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: proposed for Person 2 review
-- Implementation status: transactional RAW loader implemented and January reconciled
+- Implementation status: idempotent RAW ingestion implemented and January reconciled
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
@@ -137,6 +137,10 @@ Planned source-row uniqueness:
   controlled operation; its implementation is deferred to the incremental-load
   milestone.
 - A failed attempt must not expose a partially committed RAW batch.
+- A skipped attempt records `loaded_row_count = 0` because it commits no new
+  RAW rows.
+- PostgreSQL advisory locking serializes attempts for the same dataset, year,
+  and month across all ingestion transactions.
 
 ## Shared reference: Taxi Zone Lookup
 

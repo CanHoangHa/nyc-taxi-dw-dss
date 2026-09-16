@@ -2,11 +2,11 @@
 
 ## Status
 
-The ingestion contract, local PostgreSQL infrastructure, transactional RAW
-loader, safe monthly source downloader, strict source validator, and
-reproducible January 2024 source profiler are implemented. The source Parquet
-and loaded PostgreSQL data remain local; no dbt model, Airflow DAG, forecasting
-model, or dashboard has been implemented yet.
+The ingestion contract, local PostgreSQL infrastructure, idempotent
+transactional RAW ingestion, safe monthly source downloader, strict validator,
+and reproducible January 2024 source profiler are implemented. The source
+Parquet and loaded PostgreSQL data remain local; no dbt model, Airflow DAG,
+forecasting model, or dashboard has been implemented yet.
 
 ## Objective
 
@@ -175,13 +175,29 @@ source contract. Missing, unexpected, incorrectly cased, or differently typed
 fields fail with a specific message. Record-level anomalies remain staging
 data-quality work and do not make the complete source artifact invalid.
 
-## Transactional RAW load
+## Ingestion runbook
 
-Load one validated source month into PostgreSQL:
+From a fresh checkout, install dependencies and start PostgreSQL:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+Change the example database password in `.env`, then start Compose:
+
+```powershell
+docker compose up -d postgres
+docker compose ps
+```
+
+Run January end to end from download/reuse through validation and RAW:
 
 ```powershell
 $env:PYTHONPATH = (Resolve-Path "src").Path
-.\.venv\Scripts\python.exe -m taxi_dw.ingestion `
+.\.venv\Scripts\python.exe -m taxi_dw.ingestion run `
+  --dataset yellow_taxi `
   --year 2024 `
   --month 1 `
   --batch-size 10000
@@ -198,6 +214,27 @@ The database load transaction took 184.34 seconds, and the observed Python
 process-tree peak working set was 176.75 MiB. These figures are development
 observations, not performance guarantees.
 
-Rerun/skip and changed-checksum behavior are intentionally deferred to the
-idempotency milestone. Running the command again for an already loaded month
-currently fails safely without adding partial RAW rows.
+Run the same command again to demonstrate idempotency. It exits successfully
+with `status=skipped`, writes a skipped audit attempt, and leaves RAW unchanged.
+Attempts for the same source month are serialized with a PostgreSQL advisory
+lock, including across transaction commits.
+
+Inspect the audit trail and RAW reconciliation:
+
+```powershell
+docker compose exec -T postgres psql -U nyc_taxi -d nyc_taxi_dw `
+  -c "SELECT batch_id, source_year, source_month, status, source_row_count, loaded_row_count, error_message FROM audit.etl_batch ORDER BY started_at DESC;" `
+  -c "SELECT batch_id, count(*), min(source_row_number), max(source_row_number) FROM raw.yellow_trip GROUP BY batch_id;"
+```
+
+Operational failures are handled as follows:
+
+- Download or schema-validation failure exits nonzero before touching RAW.
+- A COPY failure rolls back all RAW rows for that attempt and records `failed`.
+- A successful month with a different checksum records `failed`, leaves RAW
+  unchanged, and reports that `replace-month` is not implemented yet.
+- Restore the reviewed official source file before retrying a checksum or
+  schema mismatch; do not manually edit RAW or its audit history.
+
+The CLI never prints the configured database password. Use `--help` or
+`run --help` to inspect the supported interface.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import psycopg
@@ -11,6 +12,45 @@ from taxi_dw.source_validation import ValidatedSourceArtifact
 
 class AuditStateError(RuntimeError):
     """Raised when an audit row is not in the expected state."""
+
+
+@dataclass(frozen=True, slots=True)
+class SuccessfulBatch:
+    """The latest successful load for one source month."""
+
+    batch_id: UUID
+    source_file_sha256: str
+    source_row_count: int
+    loaded_row_count: int
+
+
+def find_latest_successful_batch(
+    connection: psycopg.Connection,
+    artifact: ValidatedSourceArtifact,
+) -> SuccessfulBatch | None:
+    """Return the latest successful attempt for the artifact's month."""
+
+    row = connection.execute(
+        """
+        SELECT batch_id, source_file_sha256,
+               source_row_count, loaded_row_count
+        FROM audit.etl_batch
+        WHERE dataset_name = %s
+          AND source_year = %s
+          AND source_month = %s
+          AND status = 'succeeded'
+        ORDER BY finished_at DESC
+        LIMIT 1
+        """,
+        (
+            artifact.source.dataset_name,
+            artifact.source.year,
+            artifact.source.month,
+        ),
+    ).fetchone()
+    if row is None:
+        return None
+    return SuccessfulBatch(*row)
 
 
 def start_batch(
@@ -48,6 +88,49 @@ def start_batch(
     )
     if cursor.rowcount != 1:
         raise AuditStateError("Could not create the started audit attempt")
+    return resolved_batch_id
+
+
+def record_skipped_batch(
+    connection: psycopg.Connection,
+    artifact: ValidatedSourceArtifact,
+    *,
+    batch_id: UUID | None = None,
+) -> UUID:
+    """Record a same-checksum rerun without inserting RAW rows."""
+
+    resolved_batch_id = batch_id or uuid4()
+    cursor = connection.execute(
+        """
+        INSERT INTO audit.etl_batch (
+            batch_id,
+            dataset_name,
+            source_year,
+            source_month,
+            source_file,
+            source_file_sha256,
+            finished_at,
+            source_row_count,
+            loaded_row_count,
+            status
+        )
+        VALUES (
+            %s, %s, %s, %s, %s, %s,
+            clock_timestamp(), %s, 0, 'skipped'
+        )
+        """,
+        (
+            resolved_batch_id,
+            artifact.source.dataset_name,
+            artifact.source.year,
+            artifact.source.month,
+            artifact.path.name,
+            artifact.sha256,
+            artifact.row_count,
+        ),
+    )
+    if cursor.rowcount != 1:
+        raise AuditStateError("Could not create the skipped audit attempt")
     return resolved_batch_id
 
 
