@@ -2,11 +2,11 @@
 
 ## Status
 
-The ingestion contract, local PostgreSQL infrastructure, audit and RAW tables,
-safe monthly source downloader, strict source validator, and reproducible
-January 2024 source profiler are implemented. The source Parquet may exist
-locally under the Git-ignored `data/raw` directory, but no RAW loader, dbt
-model, Airflow DAG, forecasting model, or dashboard has been implemented yet.
+The ingestion contract, local PostgreSQL infrastructure, transactional RAW
+loader, safe monthly source downloader, strict source validator, and
+reproducible January 2024 source profiler are implemented. The source Parquet
+and loaded PostgreSQL data remain local; no dbt model, Airflow DAG, forecasting
+model, or dashboard has been implemented yet.
 
 ## Objective
 
@@ -174,3 +174,30 @@ least one row, and compares field names and physical types with the frozen 2024
 source contract. Missing, unexpected, incorrectly cased, or differently typed
 fields fail with a specific message. Record-level anomalies remain staging
 data-quality work and do not make the complete source artifact invalid.
+
+## Transactional RAW load
+
+Load one validated source month into PostgreSQL:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+.\.venv\Scripts\python.exe -m taxi_dw.ingestion `
+  --year 2024 `
+  --month 1 `
+  --batch-size 10000
+```
+
+The loader streams PyArrow RecordBatches into PostgreSQL with Psycopg COPY. It
+does not materialize the complete Parquet file in memory. A `started` audit row
+is committed first; the RAW rows and `succeeded` update then commit together.
+On failure, the RAW transaction is rolled back before the audit row is marked
+`failed`.
+
+The first local January run loaded 2,964,624 rows in 192.06 seconds end to end.
+The database load transaction took 184.34 seconds, and the observed Python
+process-tree peak working set was 176.75 MiB. These figures are development
+observations, not performance guarantees.
+
+Rerun/skip and changed-checksum behavior are intentionally deferred to the
+idempotency milestone. Running the command again for an already loaded month
+currently fails safely without adding partial RAW rows.

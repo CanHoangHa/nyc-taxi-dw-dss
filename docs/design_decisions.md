@@ -21,6 +21,7 @@ The following decisions are frozen for the initial project scope:
 | RAW payload naming | Preserve exact TLC source names; dbt owns canonical names |
 | RAW source identity | Dataset + source year + source month + zero-based source row number |
 | Audit reconciliation | A succeeded batch requires source count = loaded count |
+| RAW loading | Stream PyArrow RecordBatches through Psycopg COPY |
 
 Staging and warehouse schemas, data-quality thresholds, model choice, forecast
 thresholds, infrastructure configuration, and dashboard layout remain

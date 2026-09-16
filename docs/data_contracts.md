@@ -4,7 +4,7 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: proposed for Person 2 review
-- Implementation status: audit and RAW tables implemented; RAW loader not started
+- Implementation status: transactional RAW loader implemented and January reconciled
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,

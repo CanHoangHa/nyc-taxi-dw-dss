@@ -8,5 +8,5 @@ pyarrow>=18.0,<26.0
 # Milestone 2: streamed source downloads with explicit timeouts.
 httpx>=0.27,<1.0
 
-# dbt, Airflow, ingestion, DSS, and dashboard dependencies will be added only
-# when their implementation milestones begin.
+# dbt, Airflow, DSS, and dashboard dependencies will be added only when their
+# implementation milestones begin.

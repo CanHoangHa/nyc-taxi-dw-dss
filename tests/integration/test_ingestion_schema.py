@@ -32,6 +32,7 @@ EXPECTED_RAW_COLUMNS = frozenset(
     source_file_sha256 source_row_number ingested_at
     """.split()
 )
+TEST_SOURCE_ROW_NUMBER = 9_000_000_000
 
 
 @unittest.skipUnless(
@@ -111,15 +112,24 @@ class IngestionSchemaTests(unittest.TestCase):
 
     def test_rejects_raw_row_without_batch(self) -> None:
         with self.assertRaises(errors.ForeignKeyViolation):
-            self._insert_raw_row(uuid4(), source_row_number=0)
+            self._insert_raw_row(
+                uuid4(),
+                source_row_number=TEST_SOURCE_ROW_NUMBER,
+            )
 
     def test_rejects_duplicate_source_identity(self) -> None:
         batch_id = uuid4()
         self._insert_batch(batch_id=batch_id)
-        self._insert_raw_row(batch_id, source_row_number=0)
+        self._insert_raw_row(
+            batch_id,
+            source_row_number=TEST_SOURCE_ROW_NUMBER,
+        )
 
         with self.assertRaises(errors.UniqueViolation):
-            self._insert_raw_row(batch_id, source_row_number=0)
+            self._insert_raw_row(
+                batch_id,
+                source_row_number=TEST_SOURCE_ROW_NUMBER,
+            )
 
     def _insert_batch(
         self,
