@@ -2,11 +2,11 @@
 
 ## Status
 
-The ingestion contract, local PostgreSQL infrastructure, and reproducible
-January 2024 source profiler are implemented. The source Parquet may exist
-locally under the Git-ignored `data/raw` directory, but no RAW loading pipeline,
-dbt model, Airflow DAG, forecasting model, or dashboard has been implemented
-yet.
+The ingestion contract, local PostgreSQL infrastructure, safe monthly source
+downloader, and reproducible January 2024 source profiler are implemented. The
+source Parquet may exist locally under the Git-ignored `data/raw` directory,
+but no RAW loading pipeline, dbt model, Airflow DAG, forecasting model, or
+dashboard has been implemented yet.
 
 ## Objective
 
@@ -124,3 +124,18 @@ $env:PYTHONPATH = (Resolve-Path "src").Path
 The generated report records the source checksum, physical schema, exact
 counts and bounds, sampled quantiles, and initial data-quality indicators. The
 Parquet artifact remains outside Git.
+
+## Monthly source download
+
+Download a 2024 Yellow Taxi source month from the official TLC location:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+.\.venv\Scripts\python.exe -m taxi_dw.downloader --year 2024 --month 1
+```
+
+The downloader streams to a `.part` file, calculates SHA-256 while writing,
+and renames the file only after a complete response. Temporary connection and
+server errors are retried; HTTP 404 is not. If the completed destination file
+already exists, it is reused without an HTTP request or overwrite and its
+checksum is calculated again.
