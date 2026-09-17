@@ -86,7 +86,7 @@ def render_markdown(profile: dict[str, Any]) -> str:
         ".\\.venv\\Scripts\\python.exe -m taxi_dw.source_profile "
         "--path data/raw/yellow/2024/01/yellow_tripdata_2024-01.parquet "
         "--year 2024 --month 1 "
-        "--zone-lookup data/reference/taxi_zone_lookup.csv "
+        "--zone-lookup src/dbt/seeds/taxi_zone_lookup.csv "
         "--output docs/profiles/yellow_tripdata_2024_01.md",
         "~~~",
         "",

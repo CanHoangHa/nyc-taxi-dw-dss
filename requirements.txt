@@ -8,5 +8,9 @@ pyarrow>=18.0,<26.0
 # Milestone 2: streamed source downloads with explicit timeouts.
 httpx>=0.27,<1.0
 
-# dbt, Airflow, DSS, and dashboard dependencies will be added only when their
+# Milestone 7: PostgreSQL staging transformations and data-quality tests.
+dbt-core>=1.11,<1.12
+dbt-postgres>=1.11,<1.12
+
+# Airflow, DSS, and dashboard dependencies will be added only when their
 # implementation milestones begin.

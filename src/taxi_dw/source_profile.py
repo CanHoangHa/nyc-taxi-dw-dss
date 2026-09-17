@@ -230,9 +230,18 @@ def _read_zone_ids(path: Path) -> set[int]:
     try:
         with path.open("r", encoding="utf-8-sig", newline="") as csv_file:
             reader = csv.DictReader(csv_file)
-            if not reader.fieldnames or "LocationID" not in reader.fieldnames:
-                raise SourceProfileError("Taxi Zone Lookup needs LocationID")
-            return {int(row["LocationID"]) for row in reader if row["LocationID"]}
+            fieldnames = reader.fieldnames or []
+            id_field = next(
+                (
+                    name
+                    for name in ("location_id", "LocationID")
+                    if name in fieldnames
+                ),
+                None,
+            )
+            if id_field is None:
+                raise SourceProfileError("Taxi Zone Lookup needs location_id")
+            return {int(row[id_field]) for row in reader if row[id_field]}
     except (OSError, ValueError, csv.Error) as error:
         raise SourceProfileError(f"Cannot read Taxi Zone Lookup: {error}") from error
 

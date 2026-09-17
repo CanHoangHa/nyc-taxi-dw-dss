@@ -4,7 +4,7 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: proposed for Person 2 review
-- Implementation status: idempotent RAW ingestion implemented and January reconciled
+- Implementation status: RAW ingestion and dbt staging implemented; January reconciled
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
@@ -144,7 +144,7 @@ Planned source-row uniqueness:
 
 ## Shared reference: Taxi Zone Lookup
 
-- Source artifact: `data/reference/taxi_zone_lookup.csv`
+- Source artifact and dbt seed: `src/dbt/seeds/taxi_zone_lookup.csv`
 - Producer: Person 1 makes the reviewed reference file available to dbt
 - Consumers: Person 1 staging validation and Person 2 `dim_taxi_zone`
 - Grain: one TLC `LocationID`
@@ -158,7 +158,7 @@ Minimum canonical fields:
 | `zone_name` | `text` | Taxi-zone display name |
 | `service_zone` | `text` | TLC service-zone classification |
 
-The dbt seed/source name and seed path remain TBD until dbt project setup.
+The seed is exposed to dbt as `taxi_zone_lookup` in the `staging` schema.
 Person 1 owns source availability and contract validation; Person 2 owns the
 warehouse dimension built from it.
 
@@ -223,7 +223,9 @@ Quarantined records are parseable but analytically questionable, including:
 
 Valid records satisfy all implemented rejection and quarantine rules.
 
-Exact upper bounds for distance and duration remain TBD until January profiling.
+Durations over 180 minutes are quarantined. This conservative upper bound is
+about three times the January sampled p99 and can be revised with documented
+evidence from additional months. No upper distance bound is imposed yet.
 Negative monetary records are quarantined rather than silently removed because
 they may represent adjustments or disputes.
 
@@ -246,9 +248,10 @@ Every RAW row must appear exactly once in this classification.
 - Consumer: Person 2 / dbt warehouse models
 - Grain: one normalized trip record with `dq_status = 'valid'`
 
-This is the Gate A interface. It exposes the canonical fields from
-`stg_yellow_trip` and excludes `dq_status` values other than `valid`. Physical
-materialization as a view or table is TBD.
+This is the Gate A interface. It is materialized as a view, exposes the
+canonical fields from `stg_yellow_trip`, and excludes `dq_status` values other
+than `valid`. `stg_yellow_trip` is materialized as a table so its classification
+does not have to be recalculated for each warehouse query.
 
 Gate A is ready when:
 

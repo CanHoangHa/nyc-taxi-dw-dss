@@ -23,8 +23,11 @@ The following decisions are frozen for the initial project scope:
 | Audit reconciliation | A succeeded batch requires source count = loaded count |
 | RAW loading | Stream PyArrow RecordBatches through Psycopg COPY |
 | Ingestion concurrency | PostgreSQL session advisory lock per dataset and source month |
+| Taxi Zone Lookup | Version-controlled dbt seed named `taxi_zone_lookup` |
+| Staging materialization | `stg_yellow_trip` table and `stg_yellow_trip_valid` view |
+| Excessive trip duration | Quarantine durations over 180 minutes |
 
-Staging and warehouse schemas, data-quality thresholds, model choice, forecast
+Warehouse schemas, remaining data-quality thresholds, model choice, forecast
 thresholds, infrastructure configuration, and dashboard layout remain
 intentionally TBD.
 
@@ -63,8 +66,7 @@ frozen after Person 2 reviews the warehouse-consumer impact:
 
 Still intentionally unresolved for later milestones:
 
-- Upper data-quality bounds for duration and distance
-- Physical materialization of staging models
+- Upper data-quality bound for distance
 - Transactional implementation of `replace-month`
 - Warehouse surrogate-key and unknown-member policies
 - Physical partitioning and indexing

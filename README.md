@@ -4,8 +4,8 @@
 
 The ingestion contract, local PostgreSQL infrastructure, idempotent
 transactional RAW ingestion, safe monthly source downloader, strict validator,
-and reproducible January 2024 source profiler are implemented. The source
-Parquet and loaded PostgreSQL data remain local; no dbt model, Airflow DAG,
+reproducible January 2024 source profiler, and dbt staging layer are implemented.
+The source Parquet and loaded PostgreSQL data remain local; no Airflow DAG,
 forecasting model, or dashboard has been implemented yet.
 
 ## Objective
@@ -47,12 +47,11 @@ will live outside DAG definitions.
 ```text
 src/taxi_dw/          Python ingestion and shared modules
 src/airflow/dags/     Planned Airflow DAG definitions
-src/dbt/              Planned dbt project files
+src/dbt/              dbt staging models, seed, and data tests
 src/dss/              Planned forecasting and recommendation components
 src/dashboard/        Planned Streamlit application
 sql/                  Database bootstrap and ingestion-table DDL
 data/sample/          Small, Git-safe samples only
-data/reference/       Small reference datasets
 tests/                Unit and PostgreSQL integration tests
 docs/                 Architecture and design documentation
 ```
@@ -118,8 +117,8 @@ Stop the service without deleting its named volume:
 docker compose down
 ```
 
-No Airflow, dbt, ingestion, DSS, or dashboard service is included in Compose at
-this milestone.
+No Airflow, ingestion, DSS, or dashboard service is included in Compose. dbt is
+run locally and connects to the PostgreSQL service.
 
 ## January 2024 source profile
 
@@ -138,7 +137,7 @@ $env:PYTHONPATH = (Resolve-Path "src").Path
   --path data/raw/yellow/2024/01/yellow_tripdata_2024-01.parquet `
   --year 2024 `
   --month 1 `
-  --zone-lookup data/reference/taxi_zone_lookup.csv `
+  --zone-lookup src/dbt/seeds/taxi_zone_lookup.csv `
   --output docs/profiles/yellow_tripdata_2024_01.md
 ```
 
@@ -238,3 +237,21 @@ Operational failures are handled as follows:
 
 The CLI never prints the configured database password. Use `--help` or
 `run --help` to inspect the supported interface.
+
+## dbt staging
+
+dbt reads connection settings from environment variables only. For local
+development, `dotenv` loads the Git-ignored `.env` before each command:
+
+```powershell
+.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe debug --project-dir src/dbt --profiles-dir src/dbt
+.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe seed --project-dir src/dbt --profiles-dir src/dbt
+.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe run --project-dir src/dbt --profiles-dir src/dbt --select staging
+.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe test --project-dir src/dbt --profiles-dir src/dbt
+```
+
+The seed creates `staging.taxi_zone_lookup`. The table
+`staging.stg_yellow_trip` classifies every RAW row as `valid`, `quarantined`, or
+`rejected`; the view `staging.stg_yellow_trip_valid` is the warehouse handoff.
+January classification results are recorded in
+`docs/profiles/yellow_tripdata_2024_01_dq.md`.

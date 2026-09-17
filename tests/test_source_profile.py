@@ -20,7 +20,7 @@ class SourceProfileTests(unittest.TestCase):
             zone_path = root / "taxi_zone_lookup.csv"
             self._write_parquet(parquet_path)
             zone_path.write_text(
-                "LocationID,Borough,Zone,service_zone\n"
+                "location_id,borough,zone_name,service_zone\n"
                 "1,Manhattan,One,Yellow Zone\n"
                 "2,Queens,Two,Boro Zone\n",
                 encoding="utf-8",
