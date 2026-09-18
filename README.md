@@ -255,3 +255,6 @@ The seed creates `staging.taxi_zone_lookup`. The table
 `rejected`; the view `staging.stg_yellow_trip_valid` is the warehouse handoff.
 January classification results are recorded in
 `docs/profiles/yellow_tripdata_2024_01_dq.md`.
+
+The reproducible January reconciliation, idempotent-rerun evidence, known
+limitations, and Person 2 review checklist are in `docs/gate_a_handoff.md`.

@@ -3,8 +3,9 @@
 ## Status
 
 - Contract version: `gate-a-v1-draft`
-- Status: proposed for Person 2 review
+- Status: implemented and evidenced; pending Person 2 approval
 - Implementation status: RAW ingestion and dbt staging implemented; January reconciled
+- Gate A evidence: `docs/gate_a_handoff.md`
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
