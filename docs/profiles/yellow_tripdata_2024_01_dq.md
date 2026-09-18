@@ -5,7 +5,7 @@
 - RAW rows: 2,964,624
 - Staging rows: 2,964,624
 - Reconciliation: passed
-- dbt tests: 20 passed, 0 failed
+- dbt tests: 21 passed, 0 failed
 - Taxi Zone Lookup seed: 265 rows
 
 ## Classification

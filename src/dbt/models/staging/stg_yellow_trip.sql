@@ -39,9 +39,11 @@ with normalized as (
         "total_amount"::numeric(12, 2) as total_amount,
         "congestion_surcharge"::numeric(12, 2) as congestion_surcharge_amount,
         "Airport_fee"::numeric(12, 2) as airport_fee_amount,
-        extract(epoch from (
-            "tpep_dropoff_datetime" - "tpep_pickup_datetime"
-        )) / 60.0 as trip_duration_minutes,
+        (
+            extract(epoch from (
+                "tpep_dropoff_datetime" - "tpep_pickup_datetime"
+            )) / 60.0
+        )::double precision as trip_duration_minutes,
         pickup_zone.location_id is not null as pickup_zone_exists,
         dropoff_zone.location_id is not null as dropoff_zone_exists
     from {{ source('raw', 'yellow_trip') }} as trip
