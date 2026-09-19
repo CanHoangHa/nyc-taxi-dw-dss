@@ -17,6 +17,7 @@ with normalized as (
         source_file_sha256,
         source_row_number,
         ingested_at,
+        make_date(source_year, source_month, 1) as source_month_start,
         "VendorID"::smallint as vendor_id,
         "tpep_pickup_datetime" as pickup_datetime,
         "tpep_dropoff_datetime" as dropoff_datetime,
@@ -60,6 +61,11 @@ classified as (
             case when pickup_datetime is null then 'MISSING_PICKUP_DATETIME' end,
             case when dropoff_datetime is null then 'MISSING_DROPOFF_DATETIME' end,
             case when dropoff_datetime < pickup_datetime then 'DROPOFF_BEFORE_PICKUP' end,
+            case when
+                pickup_datetime < source_month_start
+                or pickup_datetime >= source_month_start + interval '1 month'
+                then 'PICKUP_OUTSIDE_SOURCE_MONTH'
+            end,
             case when not pickup_zone_exists then 'UNKNOWN_PICKUP_ZONE' end,
             case when not dropoff_zone_exists then 'UNKNOWN_DROPOFF_ZONE' end,
             case when trip_distance < 0 then 'NEGATIVE_TRIP_DISTANCE' end,

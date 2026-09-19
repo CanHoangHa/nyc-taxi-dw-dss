@@ -217,12 +217,17 @@ Rejected records are structurally unusable for trip analysis, including:
 
 Quarantined records are parseable but analytically questionable, including:
 
+- Pickup timestamp outside its source month
 - Pickup or drop-off location missing from the Taxi Zone Lookup
 - Negative trip distance
 - Non-positive or unusually long duration
 - Negative monetary values
 
 Valid records satisfy all implemented rejection and quarantine rules.
+
+Pickup timestamps must fall on or after the first day of `source_year` and
+`source_month`, and before the first day of the following month. Drop-off may
+cross the month boundary; classification is anchored to pickup time.
 
 Durations over 180 minutes are quarantined. This conservative upper bound is
 about three times the January sampled p99 and can be revised with documented

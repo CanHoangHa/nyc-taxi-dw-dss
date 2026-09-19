@@ -72,7 +72,7 @@ Quantiles use a deterministic bounded sample; counts and bounds are exact.
 | negative_trip_distance | 0 (0.0000%) |
 | negative_monetary_row | 37,578 (1.2675%) |
 
-Thresholds for unusually long duration and distance remain a team decision.
+This source profile does not apply upper data-quality thresholds; approved thresholds are documented in docs/design_decisions.md.
 Negative monetary rows remain traceable and are not silently removed.
 
 ## Reproduce

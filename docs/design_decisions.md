@@ -26,6 +26,7 @@ The following decisions are frozen for the initial project scope:
 | Taxi Zone Lookup | Version-controlled dbt seed named `taxi_zone_lookup` |
 | Staging materialization | `stg_yellow_trip` table and `stg_yellow_trip_valid` view |
 | Excessive trip duration | Quarantine durations over 180 minutes |
+| Source-month consistency | Quarantine pickup timestamps outside their source month |
 
 Warehouse schemas, remaining data-quality thresholds, model choice, forecast
 thresholds, infrastructure configuration, and dashboard layout remain

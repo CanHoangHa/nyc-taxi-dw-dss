@@ -76,7 +76,8 @@ def render_markdown(profile: dict[str, Any]) -> str:
         lines.append(f"| {name} | {count:,} ({percentage:.4f}%) |")
     lines += [
         "",
-        "Thresholds for unusually long duration and distance remain a team decision.",
+        "This source profile does not apply upper data-quality thresholds; approved "
+        "thresholds are documented in docs/design_decisions.md.",
         "Negative monetary rows remain traceable and are not silently removed.",
         "",
         "## Reproduce",
