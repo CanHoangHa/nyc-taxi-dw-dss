@@ -3,9 +3,9 @@
 ## Status
 
 - Handoff version: `gate-a-v1-draft`
-- Pipeline commit: `48113df` (`fix: enforce Gate A column types`)
+- Pipeline commit: `7948608` (`feat: quarantine pickups outside source month`)
 - Branch: `feature/ingestion-pipeline`
-- Evidence collected: 2026-09-18
+- Evidence collected: 2026-09-20
 - Warehouse review: pending Person 2
 
 Gate A exposes `staging.stg_yellow_trip_valid`. Its grain is one valid source
@@ -31,13 +31,13 @@ one January batch and the source row-number range is complete.
 
 | Status | Rows |
 |---|---:|
-| valid | 2,924,204 |
-| quarantined | 40,364 |
+| valid | 2,924,187 |
+| quarantined | 40,381 |
 | rejected | 56 |
 | **classified total** | **2,964,624** |
 
 The classified total equals the RAW count. `stg_yellow_trip_valid` contains
-2,924,204 rows, 2,924,204 distinct `trip_source_key` values, and no null
+2,924,187 rows, 2,924,187 distinct `trip_source_key` values, and no null
 `trip_source_key` values.
 
 Top reason codes:
@@ -48,6 +48,7 @@ Top reason codes:
 | `EXCESSIVE_DURATION` | 1,983 |
 | `NON_POSITIVE_DURATION` | 870 |
 | `DROPOFF_BEFORE_PICKUP` | 56 |
+| `PICKUP_OUTSIDE_SOURCE_MONTH` | 18 |
 
 A row can have multiple reason codes. Rejection reasons take priority when dbt
 assigns the single final status.
@@ -71,7 +72,7 @@ implemented yet.
 ## Verification result
 
 - dbt models: 2 passed, 0 failed
-- dbt tests: 21 passed, 0 failed
+- dbt tests: 22 passed, 0 failed
 - Python tests: 45 passed, 0 failed, including PostgreSQL integration tests
 - Taxi Zone Lookup seed: 265 rows with unique, non-null `location_id`
 - Gate A column-name/type contract test: passed
@@ -147,6 +148,7 @@ in a small review commit.
 - [x] Changed-checksum rerun fails safely.
 - [x] `trip_source_key` is unique and non-null.
 - [x] Every record has exactly one DQ status.
+- [x] Valid pickups fall within their declared source month.
 - [x] RAW count equals valid plus quarantined plus rejected.
 - [x] `stg_yellow_trip_valid` matches the implemented contract.
 - [x] Unit, integration, and dbt tests pass.
