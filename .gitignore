@@ -22,6 +22,7 @@ src/airflow/logs/
 src/dbt/target/
 src/dbt/logs/
 src/dbt/packages/
+src/dbt/.user.yml
 
 # Model artifacts
 artifacts/models/

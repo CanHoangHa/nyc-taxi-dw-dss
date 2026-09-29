@@ -3,8 +3,9 @@
 ## Status
 
 - Contract version: `gate-a-v1-draft`
-- Status: proposed for Person 2 review
-- Implementation status: not started
+- Status: implemented and evidenced; pending Person 2 approval
+- Implementation status: RAW ingestion and dbt staging implemented; January reconciled
+- Gate A evidence: `docs/gate_a_handoff.md`
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
@@ -46,8 +47,11 @@ materializations, and performance choices remain implementation decisions.
 | `status` | `text` | `started`, `succeeded`, `failed`, or `skipped` |
 | `error_message` | `text` | Failure context, otherwise null |
 
-Final constraints and the mechanism used for dbt to update classification counts
-are TBD.
+Database constraints enforce valid status values, consistent completion
+timestamps, non-negative counts, successful source-to-RAW count equality, and
+complete classification-count reconciliation when those three counts are
+populated. The mechanism used for dbt to update classification counts remains
+TBD.
 
 ## Ingestion output: `raw.yellow_trip`
 
@@ -90,10 +94,21 @@ congestion_surcharge
 Airport_fee
 ```
 
-The January source-profile task will confirm exact Parquet physical types and
-field casing before RAW DDL is implemented. Missing required fields fail source
-validation; unexpected additional fields are recorded and require an explicit
-contract decision.
+The January 2024 source profile confirmed all 19 expected fields, with no
+missing or unexpected fields. The reproducible evidence is recorded in
+`docs/profiles/yellow_tripdata_2024_01.md`.
+
+Observed Parquet types are:
+
+- `int32`: `VendorID`, `PULocationID`, and `DOLocationID`
+- `int64`: `passenger_count`, `RatecodeID`, and `payment_type`
+- `timestamp[us]`: pickup and drop-off timestamps
+- `large_string`: `store_and_fwd_flag`
+- `double`: distance and all monetary source fields
+
+RAW DDL preserves these source-compatible shapes in `raw.yellow_trip`. Missing
+required fields fail source validation; unexpected additional fields are
+recorded and require an explicit contract decision.
 
 ### Required lineage fields
 
@@ -123,10 +138,14 @@ Planned source-row uniqueness:
   controlled operation; its implementation is deferred to the incremental-load
   milestone.
 - A failed attempt must not expose a partially committed RAW batch.
+- A skipped attempt records `loaded_row_count = 0` because it commits no new
+  RAW rows.
+- PostgreSQL advisory locking serializes attempts for the same dataset, year,
+  and month across all ingestion transactions.
 
 ## Shared reference: Taxi Zone Lookup
 
-- Source artifact: `data/reference/taxi_zone_lookup.csv`
+- Source artifact and dbt seed: `src/dbt/seeds/taxi_zone_lookup.csv`
 - Producer: Person 1 makes the reviewed reference file available to dbt
 - Consumers: Person 1 staging validation and Person 2 `dim_taxi_zone`
 - Grain: one TLC `LocationID`
@@ -140,7 +159,7 @@ Minimum canonical fields:
 | `zone_name` | `text` | Taxi-zone display name |
 | `service_zone` | `text` | TLC service-zone classification |
 
-The dbt seed/source name and seed path remain TBD until dbt project setup.
+The seed is exposed to dbt as `taxi_zone_lookup` in the `staging` schema.
 Person 1 owns source availability and contract validation; Person 2 owns the
 warehouse dimension built from it.
 
@@ -198,6 +217,7 @@ Rejected records are structurally unusable for trip analysis, including:
 
 Quarantined records are parseable but analytically questionable, including:
 
+- Pickup timestamp outside its source month
 - Pickup or drop-off location missing from the Taxi Zone Lookup
 - Negative trip distance
 - Non-positive or unusually long duration
@@ -205,7 +225,13 @@ Quarantined records are parseable but analytically questionable, including:
 
 Valid records satisfy all implemented rejection and quarantine rules.
 
-Exact upper bounds for distance and duration remain TBD until January profiling.
+Pickup timestamps must fall on or after the first day of `source_year` and
+`source_month`, and before the first day of the following month. Drop-off may
+cross the month boundary; classification is anchored to pickup time.
+
+Durations over 180 minutes are quarantined. This conservative upper bound is
+about three times the January sampled p99 and can be revised with documented
+evidence from additional months. No upper distance bound is imposed yet.
 Negative monetary records are quarantined rather than silently removed because
 they may represent adjustments or disputes.
 
@@ -228,9 +254,10 @@ Every RAW row must appear exactly once in this classification.
 - Consumer: Person 2 / dbt warehouse models
 - Grain: one normalized trip record with `dq_status = 'valid'`
 
-This is the Gate A interface. It exposes the canonical fields from
-`stg_yellow_trip` and excludes `dq_status` values other than `valid`. Physical
-materialization as a view or table is TBD.
+This is the Gate A interface. It is materialized as a view, exposes the
+canonical fields from `stg_yellow_trip`, and excludes `dq_status` values other
+than `valid`. `stg_yellow_trip` is materialized as a table so its classification
+does not have to be recalculated for each warehouse query.
 
 Gate A is ready when:
 

@@ -1,1 +1,1 @@
-"""NYC Taxi DW/DSS Python package placeholder; implementation has not started."""
+"""NYC Taxi data warehouse and decision-support project package."""

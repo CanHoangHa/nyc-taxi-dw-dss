@@ -16,9 +16,34 @@ The following decisions are frozen for the initial project scope:
 | Main DSS mart | `mart_zone_hour_demand` |
 | Zone modeling | One role-playing `dim_taxi_zone` for pickup and drop-off |
 | Data-quality states | Valid, quarantined, and rejected |
+| January source schema | All 19 contract fields confirmed; exact types linked from the source profile |
+| Unexpected source columns | Fail source validation until the contract is explicitly reviewed |
+| RAW payload naming | Preserve exact TLC source names; dbt owns canonical names |
+| RAW source identity | Dataset + source year + source month + zero-based source row number |
+| Audit reconciliation | A succeeded batch requires source count = loaded count |
+| RAW loading | Stream PyArrow RecordBatches through Psycopg COPY |
+| Ingestion concurrency | PostgreSQL session advisory lock per dataset and source month |
+| Taxi Zone Lookup | Version-controlled dbt seed named `taxi_zone_lookup` |
+| Staging materialization | `stg_yellow_trip` table and `stg_yellow_trip_valid` view |
+| Excessive trip duration | Quarantine durations over 180 minutes |
+| Source-month consistency | Quarantine pickup timestamps outside their source month |
 
-Exact schemas, data-quality thresholds, model choice, forecast thresholds,
-infrastructure configuration, and dashboard layout remain intentionally TBD.
+Warehouse schemas, remaining data-quality thresholds, model choice, forecast
+thresholds, infrastructure configuration, and dashboard layout remain
+intentionally TBD.
+
+## Planned RAW-load transaction boundary
+
+The loader milestone will use three short transaction phases:
+
+1. Insert and commit the `started` audit attempt.
+2. Load the complete RAW month and update that attempt to `succeeded` in one
+   transaction.
+3. If loading fails, roll back phase 2 before updating the committed audit
+   attempt to `failed` in a separate transaction.
+
+This keeps failure history while preventing a partially loaded RAW batch from
+becoming visible.
 
 ## Gate A contract decisions proposed for team approval
 
@@ -42,9 +67,7 @@ frozen after Person 2 reviews the warehouse-consumer impact:
 
 Still intentionally unresolved for later milestones:
 
-- Exact January Parquet physical types and field casing
-- Upper data-quality bounds for duration and distance
-- Physical materialization of staging models
+- Upper data-quality bound for distance
 - Transactional implementation of `replace-month`
 - Warehouse surrogate-key and unknown-member policies
 - Physical partitioning and indexing

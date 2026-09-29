@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: stg_yellow_trip
+    description: Canonical Yellow Taxi rows classified by data-quality status.
+    columns:
+      - name: trip_source_key
+        data_tests:
+          - not_null
+          - unique
+      - name: batch_id
+        data_tests:
+          - not_null
+      - name: dq_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [valid, quarantined, rejected]
+
+  - name: stg_yellow_trip_valid
+    description: Stable warehouse handoff containing only valid trips.
+    columns:
+      - name: trip_source_key
+        data_tests:
+          - not_null
+          - unique
+      - name: pickup_location_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('taxi_zone_lookup')
+                field: location_id
+      - name: dropoff_location_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('taxi_zone_lookup')
+                field: location_id
+      - name: dq_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [valid]
+
+seeds:
+  - name: taxi_zone_lookup
+    description: Reviewed NYC TLC Taxi Zone Lookup shared by staging and warehouse.
+    columns:
+      - name: location_id
+        data_tests:
+          - not_null
+          - unique
+      - name: borough
+        data_tests:
+          - not_null
+      - name: zone_name
+        data_tests:
+          - not_null
+      - name: service_zone
+        data_tests:
+          - not_null
