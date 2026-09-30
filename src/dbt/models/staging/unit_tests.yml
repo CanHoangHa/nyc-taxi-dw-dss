@@ -1,0 +1,100 @@
+version: 2
+
+unit_tests:
+  - name: test_staging_numeric_edge_cases
+    description: Raw numeric anomalies are classified before canonical casts.
+    model: stg_yellow_trip
+    given:
+      - input: source('raw', 'yellow_trip')
+        format: sql
+        rows: |
+          select
+              case when edge_id = 1 then 40000 else 1 end::integer
+                  as "VendorID",
+              timestamp '2024-01-15 10:00:00' as "tpep_pickup_datetime",
+              timestamp '2024-01-15 10:10:00' as "tpep_dropoff_datetime",
+              1::bigint as "passenger_count",
+              case
+                  when edge_id = 4 then 'NaN'::double precision
+                  else 1.0::double precision
+              end as "trip_distance",
+              1::bigint as "RatecodeID",
+              'N'::text as "store_and_fwd_flag",
+              1::integer as "PULocationID",
+              1::integer as "DOLocationID",
+              1::bigint as "payment_type",
+              case
+                  when edge_id = 2 then 10000000000.0::double precision
+                  when edge_id = 3 then -0.001::double precision
+                  when edge_id = 5 then 'Infinity'::double precision
+                  else 10.0::double precision
+              end as "fare_amount",
+              0.5::double precision as "extra",
+              0.5::double precision as "mta_tax",
+              2.0::double precision as "tip_amount",
+              0.0::double precision as "tolls_amount",
+              1.0::double precision as "improvement_surcharge",
+              case
+                  when edge_id = 6 then '-Infinity'::double precision
+                  else 14.0::double precision
+              end as "total_amount",
+              0.0::double precision as "congestion_surcharge",
+              0.0::double precision as "Airport_fee",
+              '00000000-0000-0000-0000-000000000001'::uuid as batch_id,
+              'yellow_taxi'::text as source_dataset,
+              2024::smallint as source_year,
+              1::smallint as source_month,
+              'yellow_tripdata_2024-01.parquet'::text as source_file,
+              repeat('a', 64)::char(64) as source_file_sha256,
+              edge_id::bigint as source_row_number,
+              timestamptz '2024-02-01 00:00:00+00' as ingested_at
+          from generate_series(1, 7) as edge_id
+      - input: ref('taxi_zone_lookup')
+        format: sql
+        rows: |
+          select 1::integer as location_id
+    expect:
+      format: dict
+      rows:
+        - source_row_number: 1
+          vendor_id: null
+          fare_amount: "10.00"
+          trip_distance: 1.0
+          total_amount: "14.00"
+          dq_status: rejected
+        - source_row_number: 2
+          vendor_id: 1
+          fare_amount: null
+          trip_distance: 1.0
+          total_amount: "14.00"
+          dq_status: rejected
+        - source_row_number: 3
+          vendor_id: 1
+          fare_amount: "0.00"
+          trip_distance: 1.0
+          total_amount: "14.00"
+          dq_status: quarantined
+        - source_row_number: 4
+          vendor_id: 1
+          fare_amount: "10.00"
+          trip_distance: null
+          total_amount: "14.00"
+          dq_status: quarantined
+        - source_row_number: 5
+          vendor_id: 1
+          fare_amount: null
+          trip_distance: 1.0
+          total_amount: "14.00"
+          dq_status: quarantined
+        - source_row_number: 6
+          vendor_id: 1
+          fare_amount: "10.00"
+          trip_distance: 1.0
+          total_amount: null
+          dq_status: quarantined
+        - source_row_number: 7
+          vendor_id: 1
+          fare_amount: "10.00"
+          trip_distance: 1.0
+          total_amount: "14.00"
+          dq_status: valid

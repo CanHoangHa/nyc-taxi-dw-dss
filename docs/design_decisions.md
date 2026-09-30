@@ -58,6 +58,7 @@ frozen after Person 2 reviews the warehouse-consumer impact:
 | Duplicate policy | Do not deduplicate using trip business fields |
 | Timestamp storage | `timestamp without time zone`, interpreted as `America/New_York` |
 | Monetary contract | Consumer-facing amounts use `numeric(12,2)` |
+| Numeric edge handling | Classify RAW values before guarded canonical casts |
 | DQ representation | `dq_status` plus zero or more `dq_reason_codes` |
 | Taxi Zone Lookup | Shared reference contract used by staging and `dim_taxi_zone` |
 | Same checksum rerun | Skip a previously successful month |

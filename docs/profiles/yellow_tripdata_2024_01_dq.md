@@ -5,7 +5,7 @@
 - RAW rows: 2,964,624
 - Staging rows: 2,964,624
 - Reconciliation: passed
-- dbt tests: 22 passed, 0 failed
+- dbt tests: 24 passed, 0 failed (23 data tests and 1 unit test)
 - Taxi Zone Lookup seed: 265 rows
 
 ## Classification
@@ -34,13 +34,15 @@ to status counts. Rejected status takes priority over quarantined status.
 
 The remaining implemented reason codes had zero rows for this month:
 `MISSING_PICKUP_DATETIME`, `MISSING_DROPOFF_DATETIME`,
-`UNKNOWN_PICKUP_ZONE`, `UNKNOWN_DROPOFF_ZONE`, and
-`NEGATIVE_TRIP_DISTANCE`.
+`UNKNOWN_PICKUP_ZONE`, `UNKNOWN_DROPOFF_ZONE`,
+`NEGATIVE_TRIP_DISTANCE`, `CANONICAL_TYPE_OUT_OF_RANGE`, and
+`NON_FINITE_NUMERIC_VALUE`.
 
 ## Rules used
 
-- Reject missing timestamps or drop-off before pickup.
+- Reject missing timestamps, drop-off before pickup, or canonical type
+  overflows.
 - Quarantine unknown taxi zones, negative trip distance, pickup timestamps
   outside the source month, duration at or below zero, duration over 180
-  minutes, or any negative monetary field.
+  minutes, any negative monetary field, or non-finite numeric values.
 - Classify all remaining rows as valid.
