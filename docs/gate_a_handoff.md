@@ -3,9 +3,9 @@
 ## Status
 
 - Handoff version: `gate-a-v1-draft`
-- Pipeline commit: `7948608` (`feat: quarantine pickups outside source month`)
+- Pipeline commit: `24ec281` (`fix: classify numeric edge cases before staging casts`)
 - Branch: `feature/ingestion-pipeline`
-- Evidence collected: 2026-09-20
+- Evidence collected: 2026-09-30
 - Warehouse review: pending Person 2
 
 Gate A exposes `staging.stg_yellow_trip_valid`. Its grain is one valid source
@@ -53,6 +53,10 @@ Top reason codes:
 A row can have multiple reason codes. Rejection reasons take priority when dbt
 assigns the single final status.
 
+`CANONICAL_TYPE_OUT_OF_RANGE` and `NON_FINITE_NUMERIC_VALUE` both have zero
+rows in January. Regression fixtures verify out-of-range casts, small negative
+amounts, `NaN`, and positive and negative infinity before the canonical cast.
+
 ## Idempotent rerun evidence
 
 The same January file was run again with the same checksum:
@@ -72,7 +76,7 @@ implemented yet.
 ## Verification result
 
 - dbt models: 2 passed, 0 failed
-- dbt tests: 22 passed, 0 failed
+- dbt tests: 24 passed, 0 failed (23 data tests and 1 unit test)
 - Python tests: 45 passed, 0 failed, including PostgreSQL integration tests
 - Taxi Zone Lookup seed: 265 rows with unique, non-null `location_id`
 - Gate A column-name/type contract test: passed
@@ -148,6 +152,7 @@ in a small review commit.
 - [x] Changed-checksum rerun fails safely.
 - [x] `trip_source_key` is unique and non-null.
 - [x] Every record has exactly one DQ status.
+- [x] Numeric anomalies are classified before guarded canonical casts.
 - [x] Valid pickups fall within their declared source month.
 - [x] RAW count equals valid plus quarantined plus rejected.
 - [x] `stg_yellow_trip_valid` matches the implemented contract.
