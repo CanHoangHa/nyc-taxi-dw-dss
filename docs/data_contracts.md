@@ -213,7 +213,8 @@ Rejected records are structurally unusable for trip analysis, including:
 - Null pickup timestamp
 - Null drop-off timestamp
 - Drop-off timestamp earlier than pickup timestamp
-- Required values that cannot be converted to the canonical type
+- Values outside the range of their canonical `smallint` or `numeric(12,2)`
+  type
 
 Quarantined records are parseable but analytically questionable, including:
 
@@ -222,6 +223,7 @@ Quarantined records are parseable but analytically questionable, including:
 - Negative trip distance
 - Non-positive or unusually long duration
 - Negative monetary values
+- Non-finite distance or monetary values (`NaN`, `Infinity`, or `-Infinity`)
 
 Valid records satisfy all implemented rejection and quarantine rules.
 
@@ -233,7 +235,14 @@ Durations over 180 minutes are quarantined. This conservative upper bound is
 about three times the January sampled p99 and can be revised with documented
 evidence from additional months. No upper distance bound is imposed yet.
 Negative monetary records are quarantined rather than silently removed because
-they may represent adjustments or disputes.
+they may represent adjustments or disputes. Negative checks use the RAW
+`double precision` values before rounding to `numeric(12,2)`, so a small value
+such as `-0.001` cannot become valid after being displayed as `0.00`.
+
+Canonical casts are guarded by range checks. Out-of-range values become null in
+staging and receive `CANONICAL_TYPE_OUT_OF_RANGE` instead of aborting the dbt
+model. Non-finite values become null and receive
+`NON_FINITE_NUMERIC_VALUE`; the RAW row remains unchanged for audit.
 
 ### Reconciliation invariant
 
