@@ -133,32 +133,48 @@ def _safe_error_message(error: Exception, password: str) -> str:
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    run_parser = commands.add_parser(
-        "run",
-        help="download, validate, and ingest one source month",
+    run_parser = commands.add_parser("run", help="ingest one source month")
+    backfill_parser = commands.add_parser(
+        "backfill", help="ingest an inclusive month range in order"
     )
-    run_parser.add_argument(
-        "--dataset",
-        choices=("yellow_taxi",),
-        default="yellow_taxi",
-    )
-    run_parser.add_argument("--year", type=int, required=True)
+    for command_parser in (run_parser, backfill_parser):
+        command_parser.add_argument(
+            "--dataset", choices=("yellow_taxi",), default="yellow_taxi"
+        )
+        command_parser.add_argument("--year", type=int, required=True)
+        command_parser.add_argument("--root", type=Path, default=Path("data/raw"))
+        command_parser.add_argument(
+            "--batch-size", type=int, default=DEFAULT_BATCH_SIZE
+        )
     run_parser.add_argument("--month", type=int, required=True)
-    run_parser.add_argument("--root", type=Path, default=Path("data/raw"))
-    run_parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=DEFAULT_BATCH_SIZE,
-    )
+    backfill_parser.add_argument("--start-month", type=int, required=True)
+    backfill_parser.add_argument("--end-month", type=int, required=True)
     options = parser.parse_args(arguments)
+    if options.batch_size < 1:
+        parser.error("--batch-size must be at least 1")
+    if options.command == "backfill":
+        if not 1 <= options.start_month <= options.end_month <= 12:
+            parser.error("month range must satisfy 1 <= start-month <= end-month <= 12")
+        months = range(options.start_month, options.end_month + 1)
+    else:
+        months = [options.month]
 
     try:
-        source = YellowTaxiSource(options.year, options.month)
-        artifact = validate_source(download_source(source, root=options.root))
-        result = ingest_validated_source(
-            artifact,
-            batch_size=options.batch_size,
-        )
+        sources = [YellowTaxiSource(options.year, month) for month in months]
+        for source in sources:
+            artifact = validate_source(download_source(source, root=options.root))
+            result = ingest_validated_source(
+                artifact,
+                batch_size=options.batch_size,
+            )
+            print(
+                f"status={result.status} batch_id={result.batch_id} "
+                f"dataset={options.dataset} "
+                f"source_month={source.year}-{source.month:02d} "
+                f"source_rows={result.source_row_count:,} "
+                f"loaded_rows={result.loaded_row_count:,}",
+                flush=True,
+            )
     except Exception as error:
         password = os.environ.get("POSTGRES_PASSWORD", "")
         print(
@@ -167,13 +183,6 @@ def main(arguments: list[str] | None = None) -> int:
         )
         return 1
 
-    print(
-        f"status={result.status} batch_id={result.batch_id} "
-        f"dataset={options.dataset} "
-        f"source_month={options.year}-{options.month:02d} "
-        f"source_rows={result.source_row_count:,} "
-        f"loaded_rows={result.loaded_row_count:,}"
-    )
     return 0
 
 

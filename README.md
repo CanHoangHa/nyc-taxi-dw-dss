@@ -218,6 +218,28 @@ with `status=skipped`, writes a skipped audit attempt, and leaves RAW unchanged.
 Attempts for the same source month are serialized with a PostgreSQL advisory
 lock, including across transaction commits.
 
+### Backfill a range of months
+
+Process an inclusive month range in ascending order using the same monthly
+loader:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+.\.venv\Scripts\python.exe -m taxi_dw.ingestion backfill `
+  --year 2024 --start-month 1 --end-month 3
+```
+
+Each month has its own transaction and audit attempt. Months with an identical
+successful checksum are skipped, while new months are appended to RAW. The
+command stops at the first failure and returns a nonzero exit code. Earlier
+successful months remain loaded; rerunning the same range safely resumes by
+skipping them. A reversed or out-of-scope range fails before downloading.
+
+Backfill does not replace an existing source month. A changed checksum still
+fails without modifying that month's RAW records. After loading a range, run
+the dbt seed, staging models, and tests below. RAW ingestion is incremental by
+month; the current staging table is rebuilt from all loaded RAW months.
+
 Inspect the audit trail and RAW reconciliation:
 
 ```powershell

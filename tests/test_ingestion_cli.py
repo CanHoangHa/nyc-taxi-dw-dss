@@ -68,6 +68,67 @@ class IngestionCliTests(unittest.TestCase):
         self.assertNotIn("demo-secret", output.getvalue())
         self.assertIn("[REDACTED]", output.getvalue())
 
+    @patch("taxi_dw.ingestion.ingest_validated_source")
+    @patch("taxi_dw.ingestion.validate_source", side_effect=lambda artifact: artifact)
+    @patch("taxi_dw.ingestion.download_source", side_effect=lambda source, **kwargs: source)
+    def test_backfill_continues_after_skips_and_loads_months_in_order(
+        self, download_source, validate_source, ingest_validated_source
+    ) -> None:
+        ingest_validated_source.side_effect = [
+            IngestionResult(uuid4(), 3, 0, "skipped"),
+            IngestionResult(uuid4(), 3, 0, "skipped"),
+            IngestionResult(uuid4(), 3, 3),
+        ]
+        output = StringIO()
+        with redirect_stdout(output):
+            exit_code = main([
+                "backfill", "--year", "2024",
+                "--start-month", "1", "--end-month", "3",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [call.args[0].month for call in ingest_validated_source.call_args_list],
+            [1, 2, 3],
+        )
+        self.assertEqual(output.getvalue().count("status=skipped"), 2)
+        self.assertIn("status=succeeded", output.getvalue())
+        self.assertIn("source_month=2024-03", output.getvalue())
+
+    @patch("taxi_dw.ingestion.ingest_validated_source")
+    @patch("taxi_dw.ingestion.validate_source", side_effect=lambda artifact: artifact)
+    @patch("taxi_dw.ingestion.download_source", side_effect=lambda source, **kwargs: source)
+    def test_backfill_stops_before_later_months_after_failure(
+        self, download_source, validate_source, ingest_validated_source
+    ) -> None:
+        ingest_validated_source.side_effect = [
+            IngestionResult(uuid4(), 3, 3),
+            RuntimeError("February load failed"),
+        ]
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            exit_code = main([
+                "backfill", "--year", "2024",
+                "--start-month", "1", "--end-month", "3",
+            ])
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(
+            [call.args[0].month for call in download_source.call_args_list],
+            [1, 2],
+        )
+
+    @patch("taxi_dw.ingestion.download_source")
+    def test_invalid_backfill_range_fails_before_download(self, download_source) -> None:
+        for start, end in [(0, 3), (3, 2), (1, 13)]:
+            with self.subTest(start=start, end=end):
+                with redirect_stderr(StringIO()), self.assertRaises(SystemExit) as error:
+                    main([
+                        "backfill", "--year", "2024",
+                        "--start-month", str(start), "--end-month", str(end),
+                    ])
+                self.assertEqual(error.exception.code, 2)
+        download_source.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
