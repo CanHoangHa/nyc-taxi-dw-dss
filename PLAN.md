@@ -362,6 +362,12 @@ Exit criteria:
 
 ### Milestone 3 - Incremental ingestion
 
+Person 1 progress (2026-10-07): the January-March CLI prototype and ordered
+backfill are implemented and evidenced in
+`docs/profiles/yellow_tripdata_2024_q1_dq.md`. Airflow orchestration and
+automatic audit DQ-count write-back are the next steps. The staging models
+still rebuild the complete loaded RAW dataset.
+
 Deliverables:
 
 - January-March 2024 ingestion

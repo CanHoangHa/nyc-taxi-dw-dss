@@ -4,7 +4,8 @@
 
 The ingestion contract, local PostgreSQL infrastructure, idempotent
 transactional RAW ingestion, safe monthly source downloader, strict validator,
-reproducible January 2024 source profiler, and dbt staging layer are implemented.
+reproducible January 2024 source profiler, ordered month-range backfill, and
+dbt staging layer are implemented.
 The source Parquet and loaded PostgreSQL data remain local; no Airflow DAG,
 forecasting model, or dashboard has been implemented yet.
 
@@ -277,6 +278,10 @@ The seed creates `staging.taxi_zone_lookup`. The table
 `rejected`; the view `staging.stg_yellow_trip_valid` is the warehouse handoff.
 January classification results are recorded in
 `docs/profiles/yellow_tripdata_2024_01_dq.md`.
+
+January-March source batches, append-only loading, rerun evidence, and
+multi-month reconciliation are recorded in
+`docs/profiles/yellow_tripdata_2024_q1_dq.md`.
 
 The reproducible January reconciliation, idempotent-rerun evidence, known
 limitations, and Person 2 review checklist are in `docs/gate_a_handoff.md`.
