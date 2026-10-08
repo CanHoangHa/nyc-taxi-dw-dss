@@ -8,6 +8,10 @@ for local development. Airflow metadata and task logs persist in the
 `airflow_data` volume, separate from the PostgreSQL `postgres_data` volume.
 Standalone uses SQLite for its metadata; trip data stays in PostgreSQL.
 
+The scheduler health threshold is 120 seconds for this local runtime.
+Docker health checks inspect the reported database and component statuses,
+not just the HTTP response code.
+
 Project Python/dbt packages live in `/home/airflow/taxi-venv`, isolated from
 Airflow's dependencies. Source code is mounted read-only. dbt logs and target
 files go into the Airflow volume; cached Parquet files use `data/raw` on the
@@ -137,7 +141,36 @@ Stop local services while retaining both data volumes:
 docker compose --profile airflow down
 ```
 
+## Verification - 2026-10-08
+
+- DAG run: `verify_q1_20261008_stable`, final state `success`.
+- All five tasks succeeded on their first attempt in the final run.
+- January-March ingestion was skipped with no new RAW rows.
+- Staging rebuilt all 9,554,778 rows.
+- dbt tests: 24 passed (23 data tests and 1 unit test), using cautious selection.
+- Project Python/PostgreSQL tests: 55 passed. Airflow DAG tests: 3 passed.
+- Airflow and PostgreSQL services were healthy after the run.
+
+The final audit task populated these counts on the three original successful
+RAW batches; every row reconciles to its loaded count:
+
+| Source month | Loaded | Valid | Quarantined | Rejected |
+|---|---:|---:|---:|---:|
+| 2024-01 | 2,964,624 | 2,924,187 | 40,381 | 56 |
+| 2024-02 | 3,007,526 | 2,964,028 | 43,491 | 7 |
+| 2024-03 | 3,582,628 | 3,520,696 | 61,815 | 117 |
+
+Skipped attempts retained null DQ counts. The full scheduled execution took
+about 13 minutes on this development machine, including a full staging rebuild;
+this is an observation rather than a runtime guarantee.
+
+An earlier smoke run was interrupted during scheduler heartbeat delays and
+Docker engine disruption. The final run was performed after applying the
+120-second scheduler health threshold and the component-aware health probe.
+The earlier failed run remains visible in Airflow's history.
+
 ## References
 
 - [Airflow standalone quick start](https://airflow.apache.org/docs/apache-airflow/3.3.2/start.html)
 - [Isolated Python environments in the Airflow image](https://airflow.apache.org/docs/docker-stack/build.html)
+- [Airflow component health checks](https://airflow.apache.org/docs/apache-airflow/3.3.2/administration-and-deployment/logging-monitoring/check-health.html)
