@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: mart_zone_hour_demand
+    description: Observed valid pickup counts by New York local date, hour, and pickup taxi zone.
+    columns:
+      - name: demand_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: calendar_date
+      - name: demand_hour
+        data_tests: [not_null]
+      - name: pickup_zone_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_taxi_zone')
+                field: zone_key
+      - name: pickup_location_id
+        data_tests: [not_null]
+      - name: borough
+        data_tests: [not_null]
+      - name: zone_name
+        data_tests: [not_null]
+      - name: trip_count
+        data_tests: [not_null]

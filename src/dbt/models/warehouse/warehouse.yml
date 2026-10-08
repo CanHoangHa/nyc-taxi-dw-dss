@@ -1,0 +1,138 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: One New York local calendar date, plus one unknown member.
+    columns:
+      - name: date_key
+        data_tests: [not_null, unique]
+      - name: calendar_date
+        data_tests: [unique]
+      - name: is_unknown
+        data_tests: [not_null]
+
+  - name: dim_time
+    description: One New York local minute of day, plus one unknown member.
+    columns:
+      - name: time_key
+        data_tests: [not_null, unique]
+      - name: minute_of_day
+        data_tests: [unique]
+      - name: is_unknown
+        data_tests: [not_null]
+
+  - name: dim_taxi_zone
+    description: One TLC LocationID from the reviewed seed, plus one unknown member.
+    columns:
+      - name: zone_key
+        data_tests: [not_null, unique]
+      - name: location_id
+        data_tests: [unique]
+      - name: borough
+        data_tests: [not_null]
+      - name: zone_name
+        data_tests: [not_null]
+      - name: is_unknown
+        data_tests: [not_null]
+
+  - name: dim_vendor
+    description: One observed vendor code, plus one unknown member.
+    columns:
+      - name: vendor_key
+        data_tests: [not_null, unique]
+      - name: vendor_id
+        data_tests: [unique]
+      - name: vendor_name
+        data_tests: [not_null]
+      - name: is_unknown
+        data_tests: [not_null]
+
+  - name: dim_payment_type
+    description: One observed payment code, plus one unknown member.
+    columns:
+      - name: payment_type_key
+        data_tests: [not_null, unique]
+      - name: payment_type_id
+        data_tests: [unique]
+      - name: payment_type_name
+        data_tests: [not_null]
+      - name: is_unknown
+        data_tests: [not_null]
+
+  - name: fact_trip
+    description: One valid Yellow Taxi source trip with date, minute, zone, vendor, and payment roles.
+    columns:
+      - name: trip_source_key
+        data_tests: [not_null, unique]
+      - name: batch_id
+        data_tests: [not_null]
+      - name: source_file_sha256
+        data_tests: [not_null]
+      - name: source_row_number
+        data_tests: [not_null]
+      - name: pickup_datetime
+        data_tests: [not_null]
+      - name: dropoff_datetime
+        data_tests: [not_null]
+      - name: pickup_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: dropoff_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: pickup_time_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_time')
+                field: time_key
+      - name: dropoff_time_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_time')
+                field: time_key
+      - name: pickup_zone_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_taxi_zone')
+                field: zone_key
+      - name: dropoff_zone_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_taxi_zone')
+                field: zone_key
+      - name: vendor_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_vendor')
+                field: vendor_key
+      - name: payment_type_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_payment_type')
+                field: payment_type_key
+      - name: trip_count
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1]

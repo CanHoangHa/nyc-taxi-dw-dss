@@ -16,6 +16,12 @@ models:
   nyc_taxi_dw:
     staging:
       +materialized: view
+    warehouse:
+      +materialized: table
+      +schema: dw
+    marts:
+      +materialized: table
+      +schema: mart
 
 seeds:
   nyc_taxi_dw:

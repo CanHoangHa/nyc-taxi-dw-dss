@@ -6,9 +6,12 @@ This document is the shared implementation plan for the three-person team. It
 defines the frozen scope, responsibility boundaries, dependency order,
 milestones, handoff contracts, and acceptance criteria.
 
-The project is currently in the planning and repository-setup stage. Nothing in
-this plan implies that ingestion, infrastructure, warehouse models, forecasting,
-or dashboard features have already been implemented.
+Implementation status (4 October 2026): local PostgreSQL, January 2024 RAW
+ingestion and dbt staging, the five dimensions, `fact_trip`, the zone-hour
+demand mart, and the analytical Overview/OLAP views are implemented. The
+warehouse and mart rebuild and all 88 dbt tests pass on January data. Gate B
+awaits Person 3 consumer review. Incremental multi-month ingestion, Airflow,
+forecasting, the DSS view, and final integration remain open.
 
 ## 2. Frozen project scope
 
