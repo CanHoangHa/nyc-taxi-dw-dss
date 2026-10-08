@@ -365,8 +365,9 @@ Exit criteria:
 Person 1 progress (2026-10-07): the January-March CLI prototype and ordered
 backfill are implemented and evidenced in
 `docs/profiles/yellow_tripdata_2024_q1_dq.md`. Airflow orchestration and
-automatic audit DQ-count write-back are the next steps. The staging models
-still rebuild the complete loaded RAW dataset.
+automatic audit DQ-count write-back were added on 2026-10-08; see
+`docs/airflow_runbook.md`. The staging models still rebuild the complete
+loaded RAW dataset. Controlled source replacement remains deferred.
 
 Deliverables:
 

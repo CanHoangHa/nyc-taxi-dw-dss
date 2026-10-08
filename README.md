@@ -5,9 +5,10 @@
 The ingestion contract, local PostgreSQL infrastructure, idempotent
 transactional RAW ingestion, safe monthly source downloader, strict validator,
 reproducible January 2024 source profiler, ordered month-range backfill, and
-dbt staging layer are implemented.
-The source Parquet and loaded PostgreSQL data remain local; no Airflow DAG,
-forecasting model, or dashboard has been implemented yet.
+dbt staging layer are implemented. A local Airflow DAG orchestrates the
+pipeline through tested staging and audit DQ-count write-back.
+The source Parquet and loaded PostgreSQL data remain local. The forecasting
+model and dashboard have not been implemented yet.
 
 ## Objective
 
@@ -47,7 +48,7 @@ will live outside DAG definitions.
 
 ```text
 src/taxi_dw/          Python ingestion and shared modules
-src/airflow/dags/     Planned Airflow DAG definitions
+src/airflow/dags/     Airflow ingestion/staging DAG
 src/dbt/              dbt staging models, seed, and data tests
 src/dss/              Planned forecasting and recommendation components
 src/dashboard/        Planned Streamlit application
@@ -118,8 +119,16 @@ Stop the service without deleting its named volume:
 docker compose down
 ```
 
-No Airflow, ingestion, DSS, or dashboard service is included in Compose. dbt is
-run locally and connects to the PostgreSQL service.
+Compose includes an optional `airflow` profile. The local CLI/dbt workflow
+also works independently. Start the Airflow UI and scheduler with:
+
+```powershell
+docker compose --profile airflow up -d --build
+```
+
+Open `http://localhost:8080`, unpause `yellow_taxi_ingestion`, and trigger the
+desired 2024 month range. See `docs/airflow_runbook.md` for task flow, audit
+semantics, tests, and recovery. DSS and dashboard services are not included.
 
 ## January 2024 source profile
 

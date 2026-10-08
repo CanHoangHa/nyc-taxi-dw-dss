@@ -4,7 +4,7 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: implemented and evidenced; pending Person 2 approval
-- Implementation status: RAW ingestion and dbt staging implemented; January reconciled
+- Implementation status: RAW, staging, and Airflow implemented; January-March reconciled
 - Gate A evidence: `docs/gate_a_handoff.md`
 
 This document freezes the minimum interfaces required to let ingestion,
@@ -25,7 +25,7 @@ materializations, and performance choices remain implementation decisions.
 
 ## Supporting contract: `audit.etl_batch`
 
-- Producer: Python ingestion
+- Producer: Python ingestion and post-staging audit write-back
 - Consumers: pipeline operations, Airflow, reconciliation, and documentation
 - Grain: one ingestion attempt for one source month
 
@@ -50,8 +50,11 @@ materializations, and performance choices remain implementation decisions.
 Database constraints enforce valid status values, consistent completion
 timestamps, non-negative counts, successful source-to-RAW count equality, and
 complete classification-count reconciliation when those three counts are
-populated. The mechanism used for dbt to update classification counts remains
-TBD.
+populated. After staging tests pass, `taxi_dw.staging_audit` reconciles all
+loaded batches and writes these three counts to their `succeeded` records in
+one transaction. Skipped attempts keep null DQ counts because they loaded
+zero new rows. Audit `status` describes RAW ingestion; the Airflow DAG status
+separately records staging/test failures.
 
 ## Ingestion output: `raw.yellow_trip`
 

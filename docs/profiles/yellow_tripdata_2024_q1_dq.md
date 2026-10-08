@@ -139,10 +139,10 @@ full join classified_counts using (source_year, source_month)
 order by source_year, source_month;
 ```
 
-## Remaining work
+## Follow-up work
 
-- Airflow DAG and its local Docker runtime.
-- Automatic DQ-count write-back to `audit.etl_batch` after staging tests pass.
+- Airflow and audit DQ-count write-back were added after this prototype;
+  see `docs/airflow_runbook.md` for their verification and operation.
 - Controlled source replacement (`replace-month`); normal backfill is
   append-or-skip only.
 - Person 2 contract approval and warehouse integration.
