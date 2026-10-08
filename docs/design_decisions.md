@@ -28,9 +28,11 @@ The following decisions are frozen for the initial project scope:
 | Excessive trip duration | Quarantine durations over 180 minutes |
 | Source-month consistency | Quarantine pickup timestamps outside their source month |
 
-Warehouse schemas, remaining data-quality thresholds, model choice, forecast
-thresholds, infrastructure configuration, and dashboard layout remain
-intentionally TBD.
+The dimension and fact models use the `dw` schema; the demand mart is a table
+in `mart`. The Person 2 analytical Overview and OLAP views now read that mart
+through a repository layer. Remaining data-quality thresholds, model choice,
+forecast thresholds, infrastructure configuration, and the integrated DSS
+dashboard layout remain intentionally TBD.
 
 ## Planned RAW-load transaction boundary
 
@@ -70,5 +72,10 @@ Still intentionally unresolved for later milestones:
 
 - Upper data-quality bound for distance
 - Transactional implementation of `replace-month`
-- Warehouse surrogate-key and unknown-member policies
 - Physical partitioning and indexing
+
+The warehouse dimension key and unknown-member policies, including the
+minute-level `dim_time`, are now recorded in `docs/dimensional_model.md`.
+The demand mart uses observed date-hour-zone combinations and leaves dense
+zero filling to Person 3; its provisional Gate B interface is in
+`docs/gate_b_handoff.md`.

@@ -12,5 +12,8 @@ httpx>=0.27,<1.0
 dbt-core>=1.11,<1.12
 dbt-postgres>=1.11,<1.12
 
+# Person 2 analytical and OLAP dashboard.
+streamlit>=1.65,<2.0
+
 # Airflow is pinned in src/airflow/Dockerfile and runs in Docker.
-# DSS and dashboard dependencies will be added at their implementation milestones.
+# DSS dependencies will be added at their implementation milestone.

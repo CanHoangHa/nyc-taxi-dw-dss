@@ -7,8 +7,10 @@ transactional RAW ingestion, safe monthly source downloader, strict validator,
 reproducible January 2024 source profiler, ordered month-range backfill, and
 dbt staging layer are implemented. A local Airflow DAG orchestrates the
 pipeline through tested staging and audit DQ-count write-back.
-The source Parquet and loaded PostgreSQL data remain local. The forecasting
-model and dashboard have not been implemented yet.
+Five warehouse dimensions and `fact_trip` are implemented in `dw`, and
+`mart_zone_hour_demand` is implemented in `mart`. The analytical Overview and
+OLAP Streamlit views are implemented. Forecasting and the DSS view remain
+planned. The source Parquet and loaded PostgreSQL data remain local.
 
 ## Objective
 
@@ -41,17 +43,18 @@ NYC TLC monthly Parquet
   -> OLAP, dashboard, and DSS
 ```
 
-Airflow will orchestrate the pipeline only. Business and data-processing logic
-will live outside DAG definitions.
+Airflow orchestrates ingestion through tested staging and audit write-back.
+Warehouse/mart builds currently run through the documented dbt commands.
+Business and data-processing logic lives outside DAG definitions.
 
 ## Repository structure
 
 ```text
 src/taxi_dw/          Python ingestion and shared modules
 src/airflow/dags/     Airflow ingestion/staging DAG
-src/dbt/              dbt staging models, seed, and data tests
+src/dbt/              dbt staging, warehouse, mart, seed, and data tests
 src/dss/              Planned forecasting and recommendation components
-src/dashboard/        Planned Streamlit application
+src/dashboard/        Overview and OLAP Streamlit application
 sql/                  Database bootstrap and ingestion-table DDL
 data/sample/          Small, Git-safe samples only
 tests/                Unit and PostgreSQL integration tests
@@ -128,7 +131,9 @@ docker compose --profile airflow up -d --build
 
 Open `http://localhost:8080`, unpause `yellow_taxi_ingestion`, and trigger the
 desired 2024 month range. See `docs/airflow_runbook.md` for task flow, audit
-semantics, tests, and recovery. DSS and dashboard services are not included.
+semantics, tests, and recovery. The DAG stops after staging/audit; run the dbt
+warehouse and mart commands below to refresh analytics after a new month.
+DSS and dashboard services are not included in Compose.
 
 ## January 2024 source profile
 
@@ -294,3 +299,64 @@ multi-month reconciliation are recorded in
 
 The reproducible January reconciliation, idempotent-rerun evidence, known
 limitations, and Person 2 review checklist are in `docs/gate_a_handoff.md`.
+
+## dbt warehouse
+
+After seeding, rebuild staging, the warehouse, and the demand mart, then test
+the full project:
+
+```powershell
+.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe run --project-dir src/dbt --profiles-dir src/dbt --select staging warehouse marts
+.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe test --project-dir src/dbt --profiles-dir src/dbt
+```
+
+The models create `dw.dim_date`, `dw.dim_time`, `dw.dim_taxi_zone`,
+`dw.dim_vendor`, `dw.dim_payment_type`, and `dw.fact_trip`. A custom dbt schema
+macro keeps the requested schema name exactly `dw` rather than `staging_dw`. Date and time
+are based on New York local timestamps; the minute-level choice and key mapping
+are documented in `docs/dimensional_model.md`. The column-level fact and
+dimension dictionary is in `docs/warehouse_data_dictionary.md`. Full `dbt test` checks both
+staging and warehouse contracts.
+
+`fact_trip` contains exactly one row per valid staging trip and preserves the
+source key and lineage. It uses both pickup and drop-off roles for date, minute,
+and zone. Nullable source measures stay null. The mart groups valid pickups by
+New York local date, hour, and taxi zone. It contains only combinations with at
+least one pickup; see `docs/gate_b_handoff.md` for the zero-demand policy and
+Person 3 handoff.
+
+## Analytical dashboard (Person 2)
+
+After PostgreSQL is running and the dbt warehouse/mart build above has passed,
+start the Overview and OLAP application from the repository root:
+
+```powershell
+.\.venv\Scripts\streamlit.exe run src/dashboard/app.py
+```
+
+Open the local URL printed by Streamlit. The sidebar filters pickup dates,
+borough, local pickup hours, and optional TLC taxi zones. Overview displays
+pickup-trip KPIs and daily/hourly/geographic charts. OLAP switches between
+month, day, day-hour, borough, and zone groupings; the filters implement
+slice/dice. SQL lives in `src/dashboard/analytics_repository.py`, not in the
+view. The app reads `mart.mart_zone_hour_demand` and does not read RAW.
+
+The mart is sparse and January-March 2024 are currently loaded. An absent
+combination in a fully built month means zero **valid** pickups; an unloaded
+month has unavailable data. Use the refresh button after a dbt rebuild or wait
+up to five minutes for the dashboard cache. Query definitions, four runnable
+OLAP examples, field meanings, and reconciliation guidance are in
+`docs/olap_analytics.md`. The DSS recommendation page belongs to Person 3 and
+can be integrated when Gate C is ready.
+
+Validate the analytics repository against the rebuilt local mart with:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+$env:RUN_ANALYTICS_TESTS = "1"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+The analytics integration tests compare the dashboard totals and OLAP
+roll-ups with `dw.fact_trip`, then verify filtered slice/dice counts. Existing
+database integration tests remain controlled separately by `RUN_DB_TESTS=1`.

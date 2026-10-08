@@ -288,8 +288,8 @@ Gate A is ready when:
 
 The fact is expected to consume `stg_yellow_trip_valid`, retain
 `trip_source_key`, and reference pickup and drop-off date, time, and taxi-zone
-roles plus vendor and payment-type dimensions. Exact surrogate keys and the
-final measure set are owned by Person 2 and remain TBD.
+roles plus vendor and payment-type dimensions. Dimension keys, unknown members,
+and the selected fact measures are defined in `docs/dimensional_model.md`.
 
 Person 1 guarantees canonical timestamps, business identifiers, measures, and
 lineage. Person 1 does not generate warehouse surrogate keys.
@@ -312,5 +312,8 @@ Minimum planned fields:
 | `zone_name` | Zone display name |
 | `trip_count` | Count of valid pickup trips in the grain |
 
-Zero-demand representation, additional metrics, lag features, and physical
-materialization remain TBD and are owned by Persons 2 and 3 at Gate B.
+The implemented mart is a dbt table in schema `mart`. It contains observed
+positive-demand combinations only; absence means zero only inside a known
+fully loaded source month. Person 3 builds the dense date-hour-zone grid for
+forecasting. See `docs/gate_b_handoff.md` for coverage and special-zone rules.
+Additional metrics and lag features remain to be agreed at Gate B.
