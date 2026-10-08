@@ -12,5 +12,5 @@ httpx>=0.27,<1.0
 dbt-core>=1.11,<1.12
 dbt-postgres>=1.11,<1.12
 
-# Airflow, DSS, and dashboard dependencies will be added only when their
-# implementation milestones begin.
+# Airflow is pinned in src/airflow/Dockerfile and runs in Docker.
+# DSS and dashboard dependencies will be added at their implementation milestones.
