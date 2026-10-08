@@ -21,8 +21,9 @@ a complete total when no rows were truncated.
 ## Runnable OLAP examples
 
 Run these statements with `psql` against the project database. The January
-examples use the first loaded source month. Change the literal date bounds as
-later months are loaded. All examples query the mart, never RAW.
+examples use the first loaded source month; January-March are now available.
+Change the literal date bounds for another period. All examples query the
+mart, never RAW.
 
 ### Roll-up: daily zone-hour data to month and borough
 
@@ -136,3 +137,9 @@ Scanning a small, month-wide table is appropriate for this query. A full-year
 scan or a different index is a **measurement decision** after the remaining
 months are loaded; adding indexes without a representative workload would slow
 dbt rebuilds for an unproven benefit.
+
+After the January-March build (240,554 mart rows), the same borough roll-up
+over all three months completed in **19.823 ms** with 3,280 shared buffers hit
+(`EXPLAIN (ANALYZE, BUFFERS)`, 8 October 2026). PostgreSQL chose a parallel
+sequential scan. This single local measurement does not justify another index;
+full-year performance remains to be measured after those months are loaded.

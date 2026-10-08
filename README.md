@@ -4,11 +4,13 @@
 
 The ingestion contract, local PostgreSQL infrastructure, idempotent
 transactional RAW ingestion, safe monthly source downloader, strict validator,
-reproducible January 2024 source profiler, and dbt staging layer are implemented.
+reproducible January 2024 source profiler, ordered month-range backfill, and
+dbt staging layer are implemented. A local Airflow DAG orchestrates the
+pipeline through tested staging and audit DQ-count write-back.
 Five warehouse dimensions and `fact_trip` are implemented in `dw`, and
 `mart_zone_hour_demand` is implemented in `mart`. The analytical Overview and
-OLAP Streamlit views are implemented. Airflow, forecasting, and the DSS view
-remain planned. The source Parquet and loaded PostgreSQL data remain local.
+OLAP Streamlit views are implemented. Forecasting and the DSS view remain
+planned. The source Parquet and loaded PostgreSQL data remain local.
 
 ## Objective
 
@@ -41,14 +43,15 @@ NYC TLC monthly Parquet
   -> OLAP, dashboard, and DSS
 ```
 
-Airflow will orchestrate the pipeline only. Business and data-processing logic
-will live outside DAG definitions.
+Airflow orchestrates ingestion through tested staging and audit write-back.
+Warehouse/mart builds currently run through the documented dbt commands.
+Business and data-processing logic lives outside DAG definitions.
 
 ## Repository structure
 
 ```text
 src/taxi_dw/          Python ingestion and shared modules
-src/airflow/dags/     Planned Airflow DAG definitions
+src/airflow/dags/     Airflow ingestion/staging DAG
 src/dbt/              dbt staging, warehouse, mart, seed, and data tests
 src/dss/              Planned forecasting and recommendation components
 src/dashboard/        Overview and OLAP Streamlit application
@@ -119,8 +122,18 @@ Stop the service without deleting its named volume:
 docker compose down
 ```
 
-No Airflow, ingestion, DSS, or dashboard service is included in Compose. dbt is
-run locally and connects to the PostgreSQL service.
+Compose includes an optional `airflow` profile. The local CLI/dbt workflow
+also works independently. Start the Airflow UI and scheduler with:
+
+```powershell
+docker compose --profile airflow up -d --build
+```
+
+Open `http://localhost:8080`, unpause `yellow_taxi_ingestion`, and trigger the
+desired 2024 month range. See `docs/airflow_runbook.md` for task flow, audit
+semantics, tests, and recovery. The DAG stops after staging/audit; run the dbt
+warehouse and mart commands below to refresh analytics after a new month.
+DSS and dashboard services are not included in Compose.
 
 ## January 2024 source profile
 
@@ -220,6 +233,28 @@ with `status=skipped`, writes a skipped audit attempt, and leaves RAW unchanged.
 Attempts for the same source month are serialized with a PostgreSQL advisory
 lock, including across transaction commits.
 
+### Backfill a range of months
+
+Process an inclusive month range in ascending order using the same monthly
+loader:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+.\.venv\Scripts\python.exe -m taxi_dw.ingestion backfill `
+  --year 2024 --start-month 1 --end-month 3
+```
+
+Each month has its own transaction and audit attempt. Months with an identical
+successful checksum are skipped, while new months are appended to RAW. The
+command stops at the first failure and returns a nonzero exit code. Earlier
+successful months remain loaded; rerunning the same range safely resumes by
+skipping them. A reversed or out-of-scope range fails before downloading.
+
+Backfill does not replace an existing source month. A changed checksum still
+fails without modifying that month's RAW records. After loading a range, run
+the dbt seed, staging models, and tests below. RAW ingestion is incremental by
+month; the current staging table is rebuilt from all loaded RAW months.
+
 Inspect the audit trail and RAW reconciliation:
 
 ```powershell
@@ -257,6 +292,10 @@ The seed creates `staging.taxi_zone_lookup`. The table
 `rejected`; the view `staging.stg_yellow_trip_valid` is the warehouse handoff.
 January classification results are recorded in
 `docs/profiles/yellow_tripdata_2024_01_dq.md`.
+
+January-March source batches, append-only loading, rerun evidence, and
+multi-month reconciliation are recorded in
+`docs/profiles/yellow_tripdata_2024_q1_dq.md`.
 
 The reproducible January reconciliation, idempotent-rerun evidence, known
 limitations, and Person 2 review checklist are in `docs/gate_a_handoff.md`.
@@ -302,7 +341,7 @@ month, day, day-hour, borough, and zone groupings; the filters implement
 slice/dice. SQL lives in `src/dashboard/analytics_repository.py`, not in the
 view. The app reads `mart.mart_zone_hour_demand` and does not read RAW.
 
-The mart is sparse and currently only January 2024 is loaded. An absent
+The mart is sparse and January-March 2024 are currently loaded. An absent
 combination in a fully built month means zero **valid** pickups; an unloaded
 month has unavailable data. Use the refresh button after a dbt rebuild or wait
 up to five minutes for the dashboard cache. Query definitions, four runnable

@@ -132,14 +132,15 @@ in a small review commit.
 
 ## Known limitations
 
-- Only January 2024 has been loaded and evidenced.
+- This handoff records January 2024 evidence. The subsequent January-March
+  prototype is documented in `docs/profiles/yellow_tripdata_2024_q1_dq.md`.
 - `replace-month` is intentionally not implemented; a changed checksum fails
   safely.
-- Airflow orchestration is not implemented.
+- Airflow was added after this January handoff; see `docs/airflow_runbook.md`.
 - No upper trip-distance threshold has been approved.
-- The classification count columns in `audit.etl_batch` are still null. dbt
-  reconciliation and this evidence package currently hold those counts; an
-  automatic audit write-back should be added with orchestration.
+- Classification counts were originally held in this evidence package.
+  The subsequent Airflow pipeline populates them on successful RAW batches
+  after staging tests and reconciliation pass.
 - Runbook verification on another group member's machine and Person 2 interface
   approval are still pending.
 

@@ -6,12 +6,14 @@ This document is the shared implementation plan for the three-person team. It
 defines the frozen scope, responsibility boundaries, dependency order,
 milestones, handoff contracts, and acceptance criteria.
 
-Implementation status (4 October 2026): local PostgreSQL, January 2024 RAW
-ingestion and dbt staging, the five dimensions, `fact_trip`, the zone-hour
-demand mart, and the analytical Overview/OLAP views are implemented. The
-warehouse and mart rebuild and all 88 dbt tests pass on January data. Gate B
-awaits Person 3 consumer review. Incremental multi-month ingestion, Airflow,
-forecasting, the DSS view, and final integration remain open.
+Implementation status (8 October 2026): local PostgreSQL, January-March 2024
+RAW ingestion and dbt staging, ordered monthly backfill, and local Airflow
+orchestration through staging/audit are implemented. The five dimensions,
+`fact_trip`, the zone-hour demand mart, and analytical Overview/OLAP views
+are implemented and have been rebuilt on January-March data. Gate B awaits
+Person 3 consumer review. Airflow currently stops at staging/audit; warehouse
+and mart builds still use the documented dbt commands. Forecasting, the DSS
+view, controlled source replacement, and final integration remain open.
 
 ## 2. Frozen project scope
 
@@ -364,6 +366,13 @@ Exit criteria:
 - Person 3 can use the DSS mart without reading the trip fact directly
 
 ### Milestone 3 - Incremental ingestion
+
+Person 1 progress (2026-10-07): the January-March CLI prototype and ordered
+backfill are implemented and evidenced in
+`docs/profiles/yellow_tripdata_2024_q1_dq.md`. Airflow orchestration and
+automatic audit DQ-count write-back were added on 2026-10-08; see
+`docs/airflow_runbook.md`. The staging models still rebuild the complete
+loaded RAW dataset. Controlled source replacement remains deferred.
 
 Deliverables:
 

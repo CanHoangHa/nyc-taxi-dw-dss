@@ -22,5 +22,50 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  airflow:
+    profiles: [airflow]
+    build:
+      context: .
+      dockerfile: src/airflow/Dockerfile
+    command: standalone
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__PARALLELISM: "1"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      AIRFLOW__API__WORKERS: "1"
+      AIRFLOW__DAG_PROCESSOR__PARSING_PROCESSES: "1"
+      AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD: "120"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PYTHONPATH: /opt/project/src
+      DBT_LOG_PATH: /opt/airflow/dbt_logs
+      DBT_TARGET_PATH: /opt/airflow/dbt_target
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    volumes:
+      - airflow_data:/opt/airflow
+      - ./src/airflow/dags:/opt/airflow/dags:ro
+      - ./src:/opt/project/src:ro
+      - ./data/raw:/opt/project/data/raw
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; h = json.load(urllib.request.urlopen('http://localhost:8080/api/v2/monitor/health', timeout=5)); assert all(h[k]['status'] == 'healthy' for k in ('metadatabase', 'scheduler', 'dag_processor', 'triggerer'))"
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 90s
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  airflow_data:
