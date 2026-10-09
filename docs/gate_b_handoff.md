@@ -1,7 +1,7 @@
 # Gate B handoff — January-March 2024 demand mart
 
-Status: producer implementation updated for Person 3's coverage, zone, and
-forecast-timing review; consumer acceptance is pending. The branch incorporates the latest
+Status: **accepted by Person 3 on 9 October 2026** after contract review and
+consumer-side validation. The branch incorporates the latest
 `develop` ingestion and Airflow work, including January-March RAW/staging.
 
 ## Interface
@@ -152,6 +152,12 @@ From the repository root with PostgreSQL running and `.env` configured:
 .\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe test --project-dir src/dbt --profiles-dir src/dbt
 ```
 
-Consumer signoff should confirm the coverage interface, sparse zero-demand
-contract, zone eligibility, and day-ahead publication boundary before Gate B
-is marked accepted.
+Person 3 acceptance confirms the coverage interface, sparse zero-demand
+contract, zone eligibility, and day-ahead publication boundary. The consumer
+implementation reads only the published coverage view, eligible zone
+dimension members, and demand mart. Its unit suite verifies covered zero-fill,
+reconciliation, gap rejection, stable grain, and exclusion of ineligible zones.
+
+This acceptance does not replace the producer evidence above and does not
+claim final model quality: January-March is sufficient for a Q1 prototype,
+while final evaluation still requires the planned full-year rebuild.
