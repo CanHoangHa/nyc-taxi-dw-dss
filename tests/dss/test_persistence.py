@@ -102,6 +102,19 @@ class PersistenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, "24 rows"):
             validate_forecasts(forecast_rows(23))
 
+    def test_rejects_fractional_hour_before_database_insert(self):
+        frame = forecast_rows()
+        frame["demand_hour"] = frame["demand_hour"].astype("float64")
+        frame.loc[0, "demand_hour"] = 0.5
+        with self.assertRaisesRegex(ContractError, "0..23"):
+            validate_forecasts(frame)
+
+    def test_rejects_null_forecast_date_before_database_insert(self):
+        frame = forecast_rows()
+        frame.loc[0, "forecast_date"] = None
+        with self.assertRaisesRegex(ContractError, "forecast_date"):
+            validate_forecasts(frame)
+
     def test_run_and_rows_commit_together(self):
         connection = FakeConnection()
         run_id = ForecastRepository(connection).save_run(

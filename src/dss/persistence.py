@@ -184,14 +184,22 @@ def validate_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
     result["forecast_date"] = pd.to_datetime(
         result["forecast_date"], errors="raise"
     ).dt.date
+    if result["forecast_date"].isna().any():
+        raise ContractError("forecast_date must not contain null values")
     non_null = [column for column in FORECAST_COLUMNS if column != "forecast_date"]
     if result[non_null].isna().any().any():
         raise ContractError("forecast output must not contain null values")
     grain = ["forecast_date", "demand_hour", "pickup_zone_key"]
     if result.duplicated(grain).any():
         raise ContractError("forecast output grain must be unique")
-    if not result["demand_hour"].between(0, 23).all():
+    hours = pd.to_numeric(result["demand_hour"], errors="raise")
+    locations = pd.to_numeric(result["pickup_location_id"], errors="raise")
+    if not np.equal(hours, np.floor(hours)).all() or not hours.between(0, 23).all():
         raise ContractError("forecast demand_hour must be within 0..23")
+    if not np.equal(locations, np.floor(locations)).all() or not locations.gt(0).all():
+        raise ContractError("forecast pickup_location_id must be a positive integer")
+    result["demand_hour"] = hours.astype("int8")
+    result["pickup_location_id"] = locations.astype("int16")
     numeric = [
         "predicted_trip_count",
         "baseline_trip_count",
@@ -208,6 +216,15 @@ def validate_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
         ["Low", "Medium", "High", "Not applicable"]
     ).all():
         raise ContractError("forecast contains an invalid demand level")
+    text_columns = [
+        "pickup_zone_key",
+        "borough",
+        "zone_name",
+        "recommendation",
+        "recommendation_reason",
+    ]
+    if any(result[column].astype(str).str.strip().eq("").any() for column in text_columns):
+        raise ContractError("forecast text fields must be non-blank")
     expected_actionable = result["pickup_location_id"].between(1, 263)
     if not result["is_actionable"].map(
         lambda value: isinstance(value, (bool, np.bool_))

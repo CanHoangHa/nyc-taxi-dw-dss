@@ -43,7 +43,7 @@ def validate_sparse_demand(frame: pd.DataFrame) -> pd.DataFrame:
     """Return a normalized copy of the sparse positive-demand mart rows."""
 
     _require_columns(frame, SPARSE_DEMAND_COLUMNS, "demand mart")
-    result = frame.loc[:, SPARSE_DEMAND_COLUMNS].copy()
+    result = frame.loc[:, SPARSE_DEMAND_COLUMNS].copy().reset_index(drop=True)
     result["demand_date"] = _dates(result["demand_date"], "demand_date")
     result["demand_hour"] = _integers(
         result["demand_hour"], "demand_hour", minimum=0, maximum=23
@@ -74,7 +74,7 @@ def validate_coverage(frame: pd.DataFrame) -> pd.DataFrame:
     """Return normalized reconciled months whose missing cells may be zero-filled."""
 
     _require_columns(frame, COVERAGE_COLUMNS, "demand coverage")
-    result = frame.loc[:, COVERAGE_COLUMNS].copy()
+    result = frame.loc[:, COVERAGE_COLUMNS].copy().reset_index(drop=True)
     result["source_year"] = _integers(
         result["source_year"], "source_year", minimum=2000, maximum=2100
     ).astype("int16")
@@ -113,7 +113,7 @@ def validate_zones(frame: pd.DataFrame) -> pd.DataFrame:
     """Return normalized recommendation-eligible taxi-zone members."""
 
     _require_columns(frame, ZONE_COLUMNS, "eligible zones")
-    result = frame.loc[:, ZONE_COLUMNS].copy()
+    result = frame.loc[:, ZONE_COLUMNS].copy().reset_index(drop=True)
     result["pickup_location_id"] = _integers(
         result["pickup_location_id"], "pickup_location_id", minimum=1, maximum=263
     ).astype("int16")

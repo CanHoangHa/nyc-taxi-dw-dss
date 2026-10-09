@@ -45,6 +45,12 @@ class DssContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, "uncovered"):
             require_covered_range(coverage, pd.Timestamp("2024-01-31"), pd.Timestamp("2024-03-01"))
 
+    def test_coverage_validation_does_not_depend_on_dataframe_index(self):
+        frame = coverage_months(1, 2)
+        frame.index = [10, 20]
+        result = validate_coverage(frame)
+        self.assertEqual(result["source_month"].tolist(), [1, 2])
+
 
 if __name__ == "__main__":
     unittest.main()
