@@ -8,7 +8,7 @@ reproducible January 2024 source profiler, ordered month-range backfill, and
 dbt staging layer are implemented. A local Airflow DAG orchestrates the
 pipeline through tested staging and audit DQ-count write-back.
 Five warehouse dimensions and `fact_trip` are implemented in `dw`, and
-`mart_zone_hour_demand` is implemented in `mart`. The analytical Overview and
+`mart_zone_hour_demand` and `mart_demand_coverage` are implemented in `mart`. The analytical Overview and
 OLAP Streamlit views are implemented. Forecasting and the DSS view remain
 planned. The source Parquet and loaded PostgreSQL data remain local.
 
@@ -324,6 +324,11 @@ and zone. Nullable source measures stay null. The mart groups valid pickups by
 New York local date, hour, and taxi zone. It contains only combinations with at
 least one pickup; see `docs/gate_b_handoff.md` for the zero-demand policy and
 Person 3 handoff.
+`mart.mart_demand_coverage` is a view that lists only months whose classified
+audit count agrees with the fact and mart totals. The dimension and mart mark
+TLC zones 1–263 as eligible for dispatch recommendations; zones 264/265 remain
+in analytical totals. Person 3 builds the dense forecast grid from eligible
+zones and covered months.
 
 ## Analytical dashboard (Person 2)
 
@@ -339,11 +344,12 @@ borough, local pickup hours, and optional TLC taxi zones. Overview displays
 pickup-trip KPIs and daily/hourly/geographic charts. OLAP switches between
 month, day, day-hour, borough, and zone groupings; the filters implement
 slice/dice. SQL lives in `src/dashboard/analytics_repository.py`, not in the
-view. The app reads `mart.mart_zone_hour_demand` and does not read RAW.
+view. The app reads `mart.mart_zone_hour_demand` and
+`mart.mart_demand_coverage`; it does not read RAW.
 
 The mart is sparse and January-March 2024 are currently loaded. An absent
-combination in a fully built month means zero **valid** pickups; an unloaded
-month has unavailable data. Use the refresh button after a dbt rebuild or wait
+combination in a month listed by `mart.mart_demand_coverage` means zero
+**valid** pickups; an unlisted month has unavailable data. Use the refresh button after a dbt rebuild or wait
 up to five minutes for the dashboard cache. Query definitions, four runnable
 OLAP examples, field meanings, and reconciliation guidance are in
 `docs/olap_analytics.md`. The DSS recommendation page belongs to Person 3 and

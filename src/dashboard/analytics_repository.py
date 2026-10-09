@@ -49,8 +49,8 @@ class AnalyticsRepository:
     def date_bounds(self) -> tuple[date | None, date | None]:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT min(demand_date), max(demand_date) "
-                "FROM mart.mart_zone_hour_demand"
+                "SELECT min(coverage_start_date), max(coverage_end_date) "
+                "FROM mart.mart_demand_coverage"
             ).fetchone()
         return row[0], row[1]
 
@@ -63,11 +63,11 @@ class AnalyticsRepository:
         return [row[0] for row in rows]
 
     def available_months(self) -> list[date]:
-        """Calendar months represented by at least one observed mart row."""
+        """Only source months reconciled across ingestion, fact, and mart."""
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT DISTINCT date_trunc('month', demand_date)::date AS demand_month "
-                "FROM mart.mart_zone_hour_demand ORDER BY demand_month"
+                "SELECT coverage_start_date FROM mart.mart_demand_coverage "
+                "ORDER BY coverage_start_date"
             ).fetchall()
         return [row[0] for row in rows]
 

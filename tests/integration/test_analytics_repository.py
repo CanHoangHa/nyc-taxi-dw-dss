@@ -71,6 +71,19 @@ class AnalyticsRepositoryDatabaseTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(diced["trip_count"], expected)
 
+    def test_coverage_months_match_reconciled_months(self):
+        with open_connection() as connection:
+            rows = connection.execute(
+                "SELECT coverage_start_date, coverage_end_date, valid_trip_count "
+                "FROM mart.mart_demand_coverage ORDER BY coverage_start_date"
+            ).fetchall()
+            mart_total = connection.execute(
+                "SELECT coalesce(sum(trip_count), 0) FROM mart.mart_zone_hour_demand"
+            ).fetchone()[0]
+        self.assertEqual(self.repository.available_months(), [row[0] for row in rows])
+        self.assertEqual(self.repository.date_bounds(), (rows[0][0], rows[-1][1]))
+        self.assertEqual(sum(row[2] for row in rows), mart_total)
+
 
 if __name__ == "__main__":
     unittest.main()

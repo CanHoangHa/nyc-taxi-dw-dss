@@ -8,6 +8,15 @@ No forecasting model or recommendation logic has been implemented yet.
 - Grain: date × hour × pickup zone
 - Target: `trip_count`
 - Main input mart: `mart_zone_hour_demand`
+- Coverage input: `mart_demand_coverage`; zero-fill only its listed months
+- Publication: all 24 hours of day D after observations through 23:59 of D−1
+- Eligible recommendation zones: TLC LocationIDs 1–263
+
+At this publication time, safe observed-demand features include lags of 24,
+48, and 168 hours, rolling statistics shifted by at least 24 hours, and
+calendar features known before day D. Same-day `lag_1` for hours 01–23 would
+use information unavailable at issuance. Person 3 owns dense-grid generation,
+feature engineering, model evaluation, and recommendations.
 
 ## Expected output
 

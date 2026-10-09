@@ -13,3 +13,8 @@ sources:
           - name: source_row_number
             data_tests:
               - not_null
+  - name: audit
+    schema: audit
+    tables:
+      - name: etl_batch
+        description: Ingestion attempts and reconciled staging classification counts.

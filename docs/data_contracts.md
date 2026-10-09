@@ -310,10 +310,15 @@ Minimum planned fields:
 | `pickup_location_id` | TLC business identifier |
 | `borough` | Zone borough |
 | `zone_name` | Zone display name |
+| `is_recommendation_eligible` | True for TLC zone IDs 1–263 only |
 | `trip_count` | Count of valid pickup trips in the grain |
 
 The implemented mart is a dbt table in schema `mart`. It contains observed
 positive-demand combinations only; absence means zero only inside a known
-fully loaded source month. Person 3 builds the dense date-hour-zone grid for
-forecasting. See `docs/gate_b_handoff.md` for coverage and special-zone rules.
+fully loaded source month listed in `mart.mart_demand_coverage`. This view
+exposes `source_year`, `source_month`, inclusive `coverage_start_date` and
+`coverage_end_date`, and `valid_trip_count`, after audit/fact/mart monthly
+totals agree. Person 3 builds the dense date-hour-zone grid for forecasting
+using only eligible zones 1–263. See `docs/gate_b_handoff.md` for the coverage,
+special-zone, and day-ahead publication rules.
 Additional metrics and lag features remain to be agreed at Gate B.

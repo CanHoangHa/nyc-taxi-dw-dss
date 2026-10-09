@@ -26,5 +26,21 @@ models:
         data_tests: [not_null]
       - name: zone_name
         data_tests: [not_null]
+      - name: is_recommendation_eligible
+        data_tests: [not_null]
       - name: trip_count
+        data_tests: [not_null]
+
+  - name: mart_demand_coverage
+    description: Fully reconciled source months whose absent demand cells may be zero-filled.
+    columns:
+      - name: source_year
+        data_tests: [not_null]
+      - name: source_month
+        data_tests: [not_null]
+      - name: coverage_start_date
+        data_tests: [not_null, unique]
+      - name: coverage_end_date
+        data_tests: [not_null]
+      - name: valid_trip_count
         data_tests: [not_null]

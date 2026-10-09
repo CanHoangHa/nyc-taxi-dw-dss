@@ -10,6 +10,7 @@ select
     zone.location_id as pickup_location_id,
     zone.borough,
     zone.zone_name,
+    zone.is_recommendation_eligible,
     sum(fact.trip_count)::bigint as trip_count
 from {{ ref('fact_trip') }} as fact
 join {{ ref('dim_date') }} as date_dim
@@ -24,4 +25,5 @@ group by
     fact.pickup_zone_key,
     zone.location_id,
     zone.borough,
-    zone.zone_name
+    zone.zone_name,
+    zone.is_recommendation_eligible
