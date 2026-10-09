@@ -8,9 +8,10 @@ reproducible January 2024 source profiler, ordered month-range backfill, and
 dbt staging layer are implemented. A local Airflow DAG orchestrates the
 pipeline through tested staging and audit DQ-count write-back.
 Five warehouse dimensions and `fact_trip` are implemented in `dw`, and
-`mart_zone_hour_demand` and `mart_demand_coverage` are implemented in `mart`. The analytical Overview and
-OLAP Streamlit views are implemented. Forecasting and the DSS view remain
-planned. The source Parquet and loaded PostgreSQL data remain local.
+`mart_zone_hour_demand` and `mart_demand_coverage` are implemented in `mart`.
+The analytical Overview/OLAP views and the Person 3 day-ahead DSS pipeline,
+versioned Gate C output, and forecast/recommendation view are implemented. The
+source Parquet, model artifacts, and loaded PostgreSQL data remain local.
 
 ## Objective
 
@@ -53,9 +54,9 @@ Business and data-processing logic lives outside DAG definitions.
 src/taxi_dw/          Python ingestion and shared modules
 src/airflow/dags/     Airflow ingestion/staging DAG
 src/dbt/              dbt staging, warehouse, mart, seed, and data tests
-src/dss/              Planned forecasting and recommendation components
-src/dashboard/        Overview and OLAP Streamlit application
-sql/                  Database bootstrap and ingestion-table DDL
+src/dss/              Forecasting, evaluation, recommendation, and Gate C modules
+src/dashboard/        Overview, OLAP, and DSS Streamlit application
+sql/                  Database bootstrap, ingestion, and Gate C DDL
 data/sample/          Small, Git-safe samples only
 tests/                Unit and PostgreSQL integration tests
 docs/                 Architecture and design documentation
@@ -91,10 +92,9 @@ inject configuration without being overwritten by the local file.
 
 The database port is bound to localhost only.
 
-The first initialization creates the `audit`, `raw`, `staging`, `dw`, and
-`mart` schemas, then creates `audit.etl_batch` and `raw.yellow_trip` from the
-numbered scripts under `sql/`. PostgreSQL initialization scripts run only for a
-new empty database volume.
+The first initialization runs all numbered scripts under `sql/`, including the
+ingestion tables and the `dss` Gate C tables. PostgreSQL initialization scripts
+run only for a new empty database volume.
 
 For an existing local volume created before a new SQL script was added, apply
 that script explicitly:
@@ -104,6 +104,9 @@ docker compose exec -T postgres psql -v ON_ERROR_STOP=1 `
   -U nyc_taxi -d nyc_taxi_dw `
   -f /docker-entrypoint-initdb.d/002_create_ingestion_tables.sql
 ```
+
+Apply `003_create_dss_tables.sql` the same way before publishing forecasts to
+an existing volume.
 
 Run all unit and database integration tests while PostgreSQL is healthy:
 
@@ -330,7 +333,7 @@ TLC zones 1–263 as eligible for dispatch recommendations; zones 264/265 remain
 in analytical totals. Person 3 builds the dense forecast grid from eligible
 zones and covered months.
 
-## Analytical dashboard (Person 2)
+## Analytical and DSS dashboard
 
 After PostgreSQL is running and the dbt warehouse/mart build above has passed,
 start the Overview and OLAP application from the repository root:
@@ -352,8 +355,9 @@ combination in a month listed by `mart.mart_demand_coverage` means zero
 **valid** pickups; an unlisted month has unavailable data. Use the refresh button after a dbt rebuild or wait
 up to five minutes for the dashboard cache. Query definitions, four runnable
 OLAP examples, field meanings, and reconciliation guidance are in
-`docs/olap_analytics.md`. The DSS recommendation page belongs to Person 3 and
-can be integrated when Gate C is ready.
+`docs/olap_analytics.md`. Choose **Dự báo & khuyến nghị** after a Gate C
+forecast is published to compare prediction with baseline and review ranked,
+versioned recommendations.
 
 Validate the analytics repository against the rebuilt local mart with:
 
@@ -366,3 +370,26 @@ $env:RUN_ANALYTICS_TESTS = "1"
 The analytics integration tests compare the dashboard totals and OLAP
 roll-ups with `dw.fact_trip`, then verify filtered slice/dice counts. Existing
 database integration tests remain controlled separately by `RUN_DB_TESTS=1`.
+
+## Person 3 DSS workflow
+
+Install the requirements, apply `sql/003_create_dss_tables.sql`, and keep the
+Q1 mart current. From the repository root:
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path "src").Path
+python -m dss.pipeline train --config configs/dss_q1.toml
+python -m dss.pipeline evaluate `
+  --config configs/dss_q1.toml `
+  --artifact artifacts/models/<artifact-from-train>.joblib
+python -m dss.pipeline forecast `
+  --artifact artifacts/models/<artifact-from-train>.joblib `
+  --date 2024-04-01
+```
+
+Training compares a Poisson gradient-boosting candidate with seasonal-naive
+and same-weekday-median baselines on validation only. Evaluation opens the test
+split after selection. Forecasting requires complete Gate B coverage for the
+preceding 28 days and persists one atomic 24 × eligible-zone run. See
+`docs/dss_design.md` and `docs/gate_c_handoff.md` for contracts, limitations,
+and the complete runbook.

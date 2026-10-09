@@ -15,5 +15,11 @@ dbt-postgres>=1.11,<1.12
 # Person 2 analytical and OLAP dashboard.
 streamlit>=1.65,<2.0
 
+# Person 3 demand forecasting and evaluation.
+pandas>=2.2,<3.0
+numpy>=2.0,<3.0
+scikit-learn>=1.5,<2.0
+joblib>=1.4,<2.0
+tomli>=2.0,<3.0; python_version < "3.11"
+
 # Airflow is pinned in src/airflow/Dockerfile and runs in Docker.
-# DSS dependencies will be added at their implementation milestone.
