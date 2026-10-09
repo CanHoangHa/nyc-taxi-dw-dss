@@ -1,7 +1,7 @@
 # Gate B handoff — January-March 2024 demand mart
 
-Status: producer implementation complete on `feature/warehouse-foundation`;
-Person 3 consumer review is pending. The branch incorporates the latest
+Status: producer implementation updated for Person 3's coverage, zone, and
+forecast-timing review; consumer acceptance is pending. The branch incorporates the latest
 `develop` ingestion and Airflow work, including January-March RAW/staging.
 
 ## Interface
@@ -19,23 +19,80 @@ or RAW table are used by the mart.
 | `pickup_location_id` | `integer` | TLC zone business identifier |
 | `borough` | `text` | Zone borough from the versioned seed |
 | `zone_name` | `text` | Zone display name from the versioned seed |
+| `is_recommendation_eligible` | `boolean` | True only for dispatchable TLC zones 1–263 |
 | `trip_count` | `bigint` | Count of valid pickup trips in this grain |
 
 The mart retains zones 264 (`N/A`) and 265 (`Outside of NYC`) when valid trips
-use them. They contribute to reconciliation, but Person 3 should decide whether
-they are actionable recommendation targets before modeling. The synthetic
-unknown dimension member has no valid pickup trips in the current dataset.
+use them. They contribute to reconciliation and analytical totals, but have
+`is_recommendation_eligible = false` and must not enter the dispatch grid or
+recommendations. Only zones 1–263 are recommendation targets. The synthetic
+unknown dimension member also has `is_recommendation_eligible = false` and must
+be excluded entirely from the recommendation grid.
 
 ## Zero-demand and coverage policy
 
 The mart is **sparse**: it emits only observed combinations, all with
-`trip_count > 0`. Within a source month successfully ingested and rebuilt
-through this mart, an absent date-hour-zone combination means **zero valid
-pickups in this dataset**. Outside loaded months, absence means **unavailable
-data**, not zero demand. January-March 2024 are currently loaded. Person 3 owns
-the dense date-hour-zone grid used for forecasting and must apply this coverage
-boundary before filling absent combinations with zero. The grid should use
-real taxi-zone seed members, excluding the synthetic unknown member.
+`trip_count > 0`. The separate `mart.mart_demand_coverage` dbt **view** publishes
+one row per month that has reconciled staging audit counts, `dw.fact_trip`, and
+the demand mart. Its interface is:
+
+| Column | Type | Meaning |
+|---|---|---|
+| `source_year` | `smallint` | Source/pickup year |
+| `source_month` | `smallint` | Source/pickup month, 1–12 |
+| `coverage_start_date` | `date` | First calendar day of the month, inclusive |
+| `coverage_end_date` | `date` | Last calendar day of the month, inclusive |
+| `valid_trip_count` | `bigint` | Classified valid trips; equals fact and mart totals |
+
+A month appears only when every successful ingestion batch for that month has
+classified counts and the monthly valid total equals both fact and mart totals.
+The view checks this when queried, so a newly loaded month cannot be treated
+as covered before rebuilding the fact and mart. Existing dbt reconciliation
+tests additionally compare every observed mart cell against independently
+grouped fact trips. A row in this view is the positive evidence for zero-fill;
+`min(demand_date)` and `max(demand_date)` alone are insufficient. An absent
+date-hour-zone combination **inside a listed month** means zero valid pickups.
+An absent combination in an unlisted month means data unavailable, including
+gaps between two listed months. Person 3 owns the dense hourly grid and must
+join it to the listed coverage months before zero-filling. Build that grid from
+`dw.dim_taxi_zone WHERE is_recommendation_eligible`, not all dimension members.
+
+The view assumes the Gate A rule that valid pickup timestamps fall inside
+their source month; keep the full dbt tests green when refreshing data. It
+establishes monthly batch completeness, not the arrival status of future TLC
+files that have never been ingested.
+
+Example historical training grid for Person 3 (one row per covered
+date × hour × recommendation-eligible zone):
+
+```sql
+select
+    d.calendar_date as demand_date,
+    h.demand_hour,
+    z.zone_key as pickup_zone_key,
+    z.location_id as pickup_location_id,
+    coalesce(m.trip_count, 0) as trip_count
+from dw.dim_date as d
+join mart.mart_demand_coverage as c
+    on d.calendar_date between c.coverage_start_date and c.coverage_end_date
+cross join generate_series(0, 23) as h(demand_hour)
+cross join dw.dim_taxi_zone as z
+left join mart.mart_zone_hour_demand as m
+    on m.demand_date = d.calendar_date
+    and m.demand_hour = h.demand_hour
+    and m.pickup_zone_key = z.zone_key
+where z.is_recommendation_eligible;
+```
+
+## Day-ahead publication contract for Person 3
+
+For day D, publish the entire 24-hour forecast only after observed data through
+23:59 on D−1 are available. A feature for any hour of D may use `lag_24`,
+`lag_48`, `lag_168`, calendar features known in advance, and rolling statistics
+shifted by at least 24 hours. `lag_1` for hours 01–23 would require actual
+observations from day D and leak future information under this publication
+contract. Person 3 owns feature preparation, forecasting, and recommendation
+logic; this document defines the shared input and timing boundary.
 
 ## January-March reconciliation
 
@@ -71,6 +128,15 @@ unit test). The Airflow DAG currently stops after staging tests and audit-count
 write-back; run the warehouse/mart dbt command separately after a new source
 month arrives.
 
+On 9 October 2026, the recommendation flag and monthly coverage view were
+built against the same Q1 data. Coverage returned three distinct months with
+`valid_trip_count` 2,924,187, 2,964,028, and 3,520,696, exactly matching the
+fact and mart monthly totals above. Zone 263 was eligible; zones 264, 265,
+and the unknown member were ineligible. The mart remained at 240,554 positive
+rows. The full dbt suite passed **99/99** tests, the analytics repository
+integration suite passed **3/3**, and the Streamlit AppTest reported no
+exceptions or warnings.
+
 The mart model has a unique index on (`demand_date`, `demand_hour`,
 `pickup_zone_key`). dbt tests check required fields, hour range, positive counts,
 grain uniqueness, dimension relationships, and exact counts for every
@@ -86,5 +152,6 @@ From the repository root with PostgreSQL running and `.env` configured:
 .\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe test --project-dir src/dbt --profiles-dir src/dbt
 ```
 
-Consumer signoff should confirm the sparse zero-demand contract and treatment
-of zone IDs 264/265 before Gate B is marked accepted.
+Consumer signoff should confirm the coverage interface, sparse zero-demand
+contract, zone eligibility, and day-ahead publication boundary before Gate B
+is marked accepted.

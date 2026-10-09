@@ -5,9 +5,10 @@
 Every query below reads `mart.mart_zone_hour_demand`, whose row grain is an
 **observed** New York local pickup date × hour × taxi zone. `trip_count` counts
 valid Yellow Taxi trips whose pickup falls in that group. A row absent from the
-mart means zero valid pickups **only inside a source month fully loaded and
-rebuilt through the mart**. Outside loaded months it means unavailable data.
-The view never interprets absent months as zero and never estimates unmet
+mart means zero valid pickups **only inside a source month listed in
+`mart.mart_demand_coverage`**. That view requires reconciled audit, fact, and
+mart totals. Outside listed months it means unavailable data. The dashboard
+stops a query if its selected period contains an unlisted month. It never estimates unmet
 demand. Taxi zones 264 and 265 remain in all counts; they are real lookup
 members. The synthetic unknown member is not present in this mart.
 

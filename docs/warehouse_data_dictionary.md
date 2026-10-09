@@ -66,3 +66,14 @@ zero-demand/coverage rule, and reconciliation counts are in `gate_b_handoff.md`.
 The mart has a unique index on `(demand_date, demand_hour, pickup_zone_key)`.
 Its `trip_count` is `bigint`, because it sums `fact_trip.trip_count`. It carries
 the zone's TLC ID, borough, and name for DSS and analytics consumers.
+`is_recommendation_eligible` is true for TLC LocationIDs 1–263 and false for
+264 (`N/A`), 265 (`Outside of NYC`), and the synthetic unknown member. The
+special zones remain in mart totals for reconciliation.
+
+## `mart.mart_demand_coverage`
+
+A view with one row per fully reconciled source/pickup month. It exposes
+`source_year` and `source_month` (`smallint`), inclusive
+`coverage_start_date` and `coverage_end_date` (`date`), and
+`valid_trip_count` (`bigint`). A listed month permits filling missing sparse
+mart cells with zero; an unlisted month does not. See `gate_b_handoff.md`.

@@ -171,7 +171,7 @@ def main():
         st.error(f"Không đọc được mart. Hãy kiểm tra PostgreSQL, .env và dbt run: {error}")
         st.stop()
     if first_date is None:
-        st.info("Mart hiện chưa có dữ liệu. Hãy nạp dữ liệu và chạy dbt trước.")
+        st.info("Chưa có tháng nào được đối soát đủ qua audit, fact và mart. Hãy chạy dbt trước.")
         st.stop()
 
     with st.sidebar:
@@ -202,9 +202,10 @@ def main():
     if missing_months:
         missing_labels = ", ".join(month.strftime("%m/%Y") for month in missing_months)
         st.warning(
-            f"Mart chưa có hàng cho tháng {missing_labels}. "
+            f"Chưa xác nhận đủ dữ liệu cho tháng {missing_labels}. "
             "Khoảng này chưa thể được diễn giải là 0 chuyến."
         )
+        st.stop()
     filters = (start_date, end_date, borough, hour_range, zone_ids)
     view = st.radio("Góc nhìn", ["Tổng quan", "OLAP"], horizontal=True)
     try:

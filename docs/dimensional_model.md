@@ -74,6 +74,9 @@ appear. Every dimension has exactly one `is_unknown = true` row. Null source
 vendor/payment IDs map to that row; TLC payment code `0` is **Flex Fare**, not
 the unknown row. Taxi-zone codes 264 (`N/A`) and 265 (`Outside of NYC`) are
 real seed members with distinct keys; neither is the fallback row.
+`is_recommendation_eligible` is true only for TLC zone IDs 1–263. Zones 264
+and 265 stay in the fact and demand mart for total reconciliation, while they
+and the synthetic unknown member are excluded from dispatch recommendations.
 
 `dim_date` spans every calendar date between the earliest pickup/dropoff and
 latest pickup/dropoff among valid staging rows. This includes a dropoff across

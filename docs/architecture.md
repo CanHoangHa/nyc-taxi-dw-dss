@@ -62,8 +62,9 @@ builds dimensions and facts from this interface rather than querying RAW.
 
 ### Gate B: warehouse to DSS
 
-Person 2 provides `mart_zone_hour_demand` at date x hour x pickup-zone grain.
-Person 3 builds forecasting features and recommendations from that interface
+Person 2 provides sparse `mart_zone_hour_demand` at date x hour x pickup-zone
+grain, monthly `mart_demand_coverage`, and a recommendation-eligibility flag.
+Person 3 builds forecasting features and recommendations from those interfaces
 rather than querying `fact_trip` directly.
 
 PostgreSQL and the optional Airflow service run through Docker Compose.

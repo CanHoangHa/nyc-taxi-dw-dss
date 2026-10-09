@@ -34,6 +34,8 @@ models:
         data_tests: [not_null]
       - name: is_unknown
         data_tests: [not_null]
+      - name: is_recommendation_eligible
+        data_tests: [not_null]
 
   - name: dim_vendor
     description: One observed vendor code, plus one unknown member.
