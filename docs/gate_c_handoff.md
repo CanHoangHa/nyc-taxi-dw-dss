@@ -1,7 +1,9 @@
 # Gate C handoff — DSS forecast and recommendation output
 
-Status: Person 3 implementation complete; database-backed runtime validation
-is pending a running local PostgreSQL/Docker environment.
+Status: Person 3 implementation complete. PostgreSQL schema and transactional
+persistence were validated against PostgreSQL 16.15 on 9 October 2026. Q1
+model training remains pending on this local volume because it contains no RAW,
+warehouse, or mart data.
 
 ## Published tables
 
@@ -75,6 +77,13 @@ The DSS unit suite covers Gate B contracts, dense reconciliation, leakage,
 calendar gaps, temporal split ordering, two baselines, non-negative model
 output, metrics, recommendation boundaries, Gate C shape, transaction rollback,
 service filtering, and an in-memory train/evaluate/forecast vertical slice.
+
+The database integration suite passed **14/14** applicable Person 1 tests, with
+three analytics tests skipped because the fresh volume had no dbt mart. The
+Gate C integration test separately inserted one model run and 24 hourly rows,
+read them through `ForecastRepository`, and used an outer rollback to verify
+that no test run remained. The initialized database exposed both Gate C tables
+and their constraints.
 
 The checked-in Q1 config is for pipeline verification. Do not present its
 metrics as the final 2024 result. Load and reconcile all twelve months, lock
