@@ -32,6 +32,18 @@ class DemandModel:
         return np.maximum(0.0, raw.astype("float64"))
 
 
+@dataclass
+class TrainingArtifact:
+    """Auditable output of validation-time model selection."""
+
+    candidate: DemandModel
+    thresholds: pd.DataFrame
+    selected_approach: str
+    validation_metrics: dict[str, dict[str, float]]
+    config: dict[str, Any]
+    git_commit_sha: str
+
+
 def train_candidate(
     training: pd.DataFrame,
     *,
@@ -98,6 +110,22 @@ def load_model(path: Path) -> DemandModel:
     value = joblib.load(Path(path))
     if not isinstance(value, DemandModel):
         raise ContractError("artifact is not a DSS DemandModel")
+    return value
+
+
+def save_training_artifact(artifact: TrainingArtifact, path: Path) -> Path:
+    target = Path(path)
+    if target.exists():
+        raise FileExistsError(f"training artifact already exists: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(artifact, target)
+    return target
+
+
+def load_training_artifact(path: Path) -> TrainingArtifact:
+    value = joblib.load(Path(path))
+    if not isinstance(value, TrainingArtifact):
+        raise ContractError("artifact is not a DSS TrainingArtifact")
     return value
 
 

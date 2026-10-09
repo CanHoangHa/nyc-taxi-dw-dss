@@ -1,0 +1,20 @@
+[dataset]
+start_date = 2024-01-01
+end_date = 2024-03-31
+
+[split]
+train_start = 2024-01-29
+train_end = 2024-02-29
+validation_start = 2024-03-01
+validation_end = 2024-03-15
+test_start = 2024-03-16
+test_end = 2024-03-31
+
+[model]
+max_iter = 100
+learning_rate = 0.08
+max_leaf_nodes = 31
+random_state = 42
+
+[artifacts]
+directory = "artifacts/models"

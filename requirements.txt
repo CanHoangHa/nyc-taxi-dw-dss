@@ -20,5 +20,6 @@ pandas>=2.2,<3.0
 numpy>=2.0,<3.0
 scikit-learn>=1.5,<2.0
 joblib>=1.4,<2.0
+tomli>=2.0,<3.0; python_version < "3.11"
 
 # Airflow is pinned in src/airflow/Dockerfile and runs in Docker.
