@@ -17,6 +17,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dashboard.analytics_repository import AnalyticsRepository  # noqa: E402
+from dss.service import DssService  # noqa: E402
 from taxi_dw.config import ConfigurationError  # noqa: E402
 from taxi_dw.db import open_connection  # noqa: E402
 
@@ -157,6 +158,85 @@ def show_olap(filters):
         st.caption(f"Tổng các nhóm đang hiển thị: {frame['trip_count'].sum():,} chuyến.")
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def dss_forecasts(forecast_date):
+    service = DssService()
+    return (
+        service.latest_run_summary(forecast_date),
+        service.ranked_recommendations(forecast_date),
+        service.model_metrics(forecast_date),
+    )
+
+
+def show_dss():
+    """Render persisted, versioned forecasts without training inside the UI."""
+
+    service = DssService()
+    dates = service.available_forecast_dates()
+    if not dates:
+        st.info(
+            "Chưa có forecast Gate C. Hãy chạy DSS train/forecast và migration "
+            "sql/003_create_dss_tables.sql trước."
+        )
+        return
+    forecast_date = st.selectbox(
+        "Ngày dự báo", dates, format_func=lambda value: value.strftime("%d/%m/%Y")
+    )
+    run, rows, metrics = dss_forecasts(forecast_date)
+    if run is None or rows.empty:
+        st.info("Không có forecast hoàn chỉnh cho ngày đã chọn.")
+        return
+
+    boroughs = sorted(rows["borough"].dropna().unique().tolist())
+    left, right = st.columns(2)
+    with left:
+        borough_label = st.selectbox("Borough dự báo", ["Tất cả", *boroughs])
+    with right:
+        forecast_hours = st.slider(
+            "Giờ dự báo", min_value=0, max_value=23, value=(0, 23)
+        )
+    mask = rows["demand_hour"].between(*forecast_hours)
+    if borough_label != "Tất cả":
+        mask &= rows["borough"].eq(borough_label)
+    filtered = rows.loc[mask].copy()
+
+    high_count = int(filtered["demand_level"].eq("High").sum())
+    columns = st.columns(3)
+    columns[0].metric(
+        "Tổng pickup dự báo", f"{filtered['predicted_trip_count'].sum():,.1f}"
+    )
+    columns[1].metric("Zone-hour mức High", f"{high_count:,}")
+    columns[2].metric("Model version", str(run["model_version"]))
+
+    st.subheader("Dự báo so với baseline theo giờ")
+    hourly = filtered.groupby("demand_hour", as_index=False)[
+        ["predicted_trip_count", "baseline_trip_count"]
+    ].sum()
+    st.line_chart(
+        hourly,
+        x="demand_hour",
+        y=["predicted_trip_count", "baseline_trip_count"],
+    )
+    st.subheader("Khuyến nghị ưu tiên")
+    display_columns = [
+        "demand_hour",
+        "borough",
+        "pickup_location_id",
+        "zone_name",
+        "predicted_trip_count",
+        "baseline_trip_count",
+        "demand_ratio",
+        "demand_level",
+        "recommendation",
+        "recommendation_reason",
+    ]
+    st.dataframe(filtered.loc[:, display_columns], width="stretch", hide_index=True)
+    st.caption(
+        f"Run {run['run_id']} · feature {run['feature_version']} · "
+        f"recommendation {run['recommendation_version']} · metrics {metrics}"
+    )
+
+
 def main():
     st.set_page_config(page_title="NYC Taxi — phân tích", layout="wide")
     st.title("NYC Yellow Taxi | Phân tích nhu cầu đón")
@@ -207,12 +287,16 @@ def main():
         )
         st.stop()
     filters = (start_date, end_date, borough, hour_range, zone_ids)
-    view = st.radio("Góc nhìn", ["Tổng quan", "OLAP"], horizontal=True)
+    view = st.radio(
+        "Góc nhìn", ["Tổng quan", "OLAP", "Dự báo & khuyến nghị"], horizontal=True
+    )
     try:
         if view == "Tổng quan":
             show_overview(filters)
-        else:
+        elif view == "OLAP":
             show_olap(filters)
+        else:
+            show_dss()
     except (psycopg.Error, ConfigurationError, ValueError) as error:
         st.error(f"Không thể chạy truy vấn phân tích: {error}")
 
