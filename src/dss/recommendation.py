@@ -8,7 +8,7 @@ import pandas as pd
 from dss.contracts import ContractError
 
 
-RECOMMENDATION_VERSION = "1.0.0"
+RECOMMENDATION_VERSION = "1.1.0"
 RECOMMENDATION_TEXT = {
     "Low": "Không cần ưu tiên bổ sung; duy trì mức sẵn sàng thông thường.",
     "Medium": "Theo dõi và duy trì khả năng sẵn sàng tại zone-hour này.",

@@ -71,6 +71,11 @@ Start Streamlit as before and choose **Dự báo & khuyến nghị**. The view s
 No model is fit inside Streamlit. The UI remains a read-only consumer of Gate
 C, with repository and service logic outside widget code.
 
+From recommendation version 1.1.0, `baseline_trip_count` is always the D−7
+seasonal-naive comparator. It is intentionally independent of the
+validation-selected forecast approach, so the ratio and High rule remain
+meaningful even when `same_weekday_median` is selected.
+
 ## Validation evidence and limitation
 
 The DSS unit suite covers Gate B contracts, dense reconciliation, leakage,
