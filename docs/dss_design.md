@@ -62,7 +62,11 @@ by zero when actual demand totals zero.
 
 ## Demand level and recommendation
 
-Historical p50/p75 thresholds are learned per zone-hour from train only.
+Historical p50/p75 thresholds are learned per zone-hour from train only. The
+recommendation comparator is the fixed seasonal-naive value from D−7. It stays
+independent of whichever approach wins validation; otherwise a winning
+same-weekday-median forecast would be compared with itself, forcing every
+ratio to 1.0 and making the High rule impossible to trigger.
 
 ```text
 demand_ratio = prediction / max(historical baseline, 1)
@@ -71,7 +75,7 @@ Medium = prediction >= p50 or ratio >= 1.0
 Low    = otherwise
 ```
 
-The Gate C row includes prediction, historical baseline, both thresholds,
+The Gate C row includes prediction, the D−7 seasonal-naive baseline, both thresholds,
 ratio, level, Vietnamese recommendation text, and an explanation of the rule
 that fired. Non-actionable zones receive no dispatch recommendation.
 

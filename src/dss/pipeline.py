@@ -161,13 +161,17 @@ def forecast_from_history(
             "borough",
             "zone_name",
             "is_recommendation_eligible",
-            "same_weekday_median_4w",
+            "lag_7d",
         ],
     ].rename(
         columns={
             "demand_date": "forecast_date",
             "is_recommendation_eligible": "is_actionable",
-            "same_weekday_median_4w": "baseline_trip_count",
+            # Keep the recommendation comparator independent from the selected
+            # approach.  In particular, if same-weekday median wins validation,
+            # comparing it with itself would force every ratio to 1.0 and make
+            # the High rule impossible to trigger.
+            "lag_7d": "baseline_trip_count",
         }
     )
     forecasts["predicted_trip_count"] = np.maximum(0.0, prediction)

@@ -390,6 +390,8 @@ python -m dss.pipeline forecast `
 Training compares a Poisson gradient-boosting candidate with seasonal-naive
 and same-weekday-median baselines on validation only. Evaluation opens the test
 split after selection. Forecasting requires complete Gate B coverage for the
-preceding 28 days and persists one atomic 24 × eligible-zone run. See
+preceding 28 days and persists one atomic 24 × eligible-zone run. Recommendation
+version 1.1.0 uses the D−7 seasonal-naive value as an independent comparison
+baseline even when another baseline wins model selection. See
 `docs/dss_design.md` and `docs/gate_c_handoff.md` for contracts, limitations,
 and the complete runbook.

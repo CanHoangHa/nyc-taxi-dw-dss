@@ -9,7 +9,12 @@ import unittest
 import pandas as pd
 
 from dss.config import DssConfig, ModelSettings, load_config
-from dss.pipeline import evaluate_from_dense, forecast_from_history, train_from_dense
+from dss.pipeline import (
+    APPROACH_MEDIAN,
+    evaluate_from_dense,
+    forecast_from_history,
+    train_from_dense,
+)
 from dss.split import TemporalSplit
 from tests.dss.fixtures import eligible_zones
 
@@ -78,6 +83,31 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(forecast), 24 * 2)
         self.assertTrue(forecast["predicted_trip_count"].ge(0).all())
         self.assertTrue(forecast["recommendation_reason"].str.len().gt(0).all())
+
+    def test_recommendation_baseline_is_independent_of_selected_approach(self):
+        training_dense = dense()
+        artifact = train_from_dense(
+            training_dense, q1_config(), git_commit_sha="abc123"
+        )
+        artifact.selected_approach = APPROACH_MEDIAN
+        history = dense(28)
+        recent_monday = history["demand_date"].eq(pd.Timestamp("2024-01-22"))
+        history.loc[recent_monday, "trip_count"] += 100
+
+        forecast = forecast_from_history(
+            artifact,
+            history,
+            eligible_zones(),
+            date(2024, 1, 29),
+        )
+
+        monday_rows = forecast["demand_hour"].eq(0)
+        self.assertTrue(
+            forecast.loc[monday_rows, "predicted_trip_count"]
+            .ne(forecast.loc[monday_rows, "baseline_trip_count"])
+            .all()
+        )
+        self.assertTrue(forecast.loc[monday_rows, "baseline_trip_count"].gt(90).all())
 
 
 if __name__ == "__main__":
