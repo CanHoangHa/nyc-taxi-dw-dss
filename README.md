@@ -113,11 +113,12 @@ Run all unit and database integration tests while PostgreSQL is healthy:
 ```powershell
 $env:PYTHONPATH = (Resolve-Path "src").Path
 $env:RUN_DB_TESTS = "1"
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
 ```
 
 Without `RUN_DB_TESTS=1`, database integration tests are discovered and
-skipped; unit tests still run normally.
+skipped; unit tests still run normally. Run discovery from the repository root
+with `-t .` so `tests/dss` does not shadow the `src/dss` package.
 
 Stop the service without deleting its named volume:
 
@@ -364,7 +365,7 @@ Validate the analytics repository against the rebuilt local mart with:
 ```powershell
 $env:PYTHONPATH = (Resolve-Path "src").Path
 $env:RUN_ANALYTICS_TESTS = "1"
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
 ```
 
 The analytics integration tests compare the dashboard totals and OLAP
@@ -389,9 +390,14 @@ python -m dss.pipeline forecast `
 
 Training compares a Poisson gradient-boosting candidate with seasonal-naive
 and same-weekday-median baselines on validation only. Evaluation opens the test
-split after selection. Forecasting requires complete Gate B coverage for the
-preceding 28 days and persists one atomic 24 × eligible-zone run. Recommendation
-version 1.1.0 uses the D−7 seasonal-naive value as an independent comparison
-baseline even when another baseline wins model selection. See
+split after selection and requires the same split boundaries saved in the artifact.
+Forecast dates must be strictly after the artifact's validation end, since
+validation was used to select the approach. Complete history through D−1
+(including train/validation dates) remains valid input for lag/rolling features.
+Forecasting requires complete Gate B coverage for the preceding 28 days and
+persists one atomic 24 × eligible-zone run. Recommendation version 1.2.0 uses
+positive prediction versus training p50/p75 for demand levels; the D−7 ratio
+separately describes weekly change. Stable high demand can be High even when
+seasonal naive is selected and the ratio equals 1. See
 `docs/dss_design.md` and `docs/gate_c_handoff.md` for contracts, limitations,
 and the complete runbook.

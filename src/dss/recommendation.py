@@ -8,7 +8,7 @@ import pandas as pd
 from dss.contracts import ContractError
 
 
-RECOMMENDATION_VERSION = "1.1.0"
+RECOMMENDATION_VERSION = "1.2.0"
 RECOMMENDATION_TEXT = {
     "Low": "Không cần ưu tiên bổ sung; duy trì mức sẵn sàng thông thường.",
     "Medium": "Theo dõi và duy trì khả năng sẵn sàng tại zone-hour này.",
@@ -98,13 +98,9 @@ def add_recommendations(
     result["demand_ratio"] = result[prediction_column] / result[
         baseline_column
     ].clip(lower=1)
-    high = (
-        result[prediction_column].ge(result["historical_p75"])
-        & result["demand_ratio"].ge(1.15)
-    )
-    medium = result[prediction_column].ge(result["historical_p50"]) | result[
-        "demand_ratio"
-    ].ge(1.0)
+    positive = result[prediction_column].gt(0)
+    high = positive & result[prediction_column].ge(result["historical_p75"])
+    medium = positive & result[prediction_column].ge(result["historical_p50"])
     result["demand_level"] = np.select(
         [~result["is_actionable"], high, medium],
         ["Not applicable", "High", "Medium"],
@@ -119,10 +115,10 @@ def add_recommendations(
         ],
         [
             "Zone nằm ngoài phạm vi điều phối 1-263.",
-            "Prediction đạt p75 lịch sử và cao hơn baseline ít nhất 15%.",
-            "Prediction đạt p50 lịch sử hoặc không thấp hơn baseline.",
+            "Prediction dương và đạt p75 lịch sử của cùng zone-hour.",
+            "Prediction dương và đạt p50, dưới p75 lịch sử của cùng zone-hour.",
         ],
-        default="Prediction dưới p50 lịch sử và thấp hơn baseline.",
+        default="Prediction bằng 0 hoặc dưới p50 lịch sử của cùng zone-hour.",
     )
     result["recommendation_version"] = RECOMMENDATION_VERSION
     return result

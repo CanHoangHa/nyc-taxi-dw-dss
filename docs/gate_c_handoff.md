@@ -71,10 +71,18 @@ Start Streamlit as before and choose **Dự báo & khuyến nghị**. The view s
 No model is fit inside Streamlit. The UI remains a read-only consumer of Gate
 C, with repository and service logic outside widget code.
 
-From recommendation version 1.1.0, `baseline_trip_count` is always the D−7
-seasonal-naive comparator. It is intentionally independent of the
-validation-selected forecast approach, so the ratio and High rule remain
-meaningful even when `same_weekday_median` is selected.
+Recommendation version **1.2.0** assigns High to positive prediction at or
+above the train-only p75 of the same zone-hour, Medium to positive prediction
+at or above p50 (unless High), and Low otherwise. Non-actionable zones remain
+Not applicable. `baseline_trip_count` stays the D−7 seasonal-naive value;
+`demand_ratio` reports weekly change separately from demand level. Thus seasonal
+naive can indicate stable High demand with ratio 1; growth from a low base is
+not sufficient for High. Zero predictions remain Low even with zero quantiles.
+Existing saved runs retain their original policy version and values.
+
+Forecast dates must be after the artifact's validation end. Evaluation rejects
+configs whose split differs from the artifact's saved experiment boundaries.
+Historical train/validation observations remain valid lag/rolling inputs.
 
 ## Validation evidence and limitation
 

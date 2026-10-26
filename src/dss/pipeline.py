@@ -35,7 +35,7 @@ from dss.recommendation import (
     fit_demand_thresholds,
 )
 from dss.repository import DemandRepository
-from dss.split import split_by_date
+from dss.split import TemporalSplit, split_by_date
 
 
 APPROACH_MODEL = "model"
@@ -98,13 +98,29 @@ def train_from_dense(
     )
 
 
+def _artifact_split(artifact: TrainingArtifact) -> TemporalSplit:
+    """Read the immutable experiment boundaries used to fit and select models."""
+    try:
+        split = TemporalSplit(**{
+            field: date.fromisoformat(artifact.config["split"][field])
+            for field in TemporalSplit.__dataclass_fields__
+        })
+    except (KeyError, TypeError, ValueError) as error:
+        raise ContractError("artifact must contain a valid saved temporal split") from error
+    split.validate()
+    return split
+
+
 def evaluate_from_dense(
     artifact: TrainingArtifact, dense: pd.DataFrame, config: DssConfig
 ) -> dict[str, dict[str, float]]:
     """Open the test split after the validation-selected approach is frozen."""
 
+    saved_split = _artifact_split(artifact)
+    if config.split != saved_split:
+        raise ContractError("evaluation split must match the split saved in the artifact")
     features = complete_feature_rows(build_features(dense))
-    test = add_baseline_predictions(split_by_date(features, config.split).test)
+    test = add_baseline_predictions(split_by_date(features, saved_split).test)
     test["prediction_model"] = artifact.candidate.predict(test)
     columns = {
         APPROACH_MODEL: "prediction_model",
@@ -125,6 +141,12 @@ def forecast_from_history(
 ) -> pd.DataFrame:
     """Create one 24 x eligible-zone day-ahead forecast from history through D-1."""
 
+    saved_split = _artifact_split(artifact)
+    if forecast_date <= saved_split.validation_end:
+        raise ContractError(
+            "forecast date must be after artifact training and validation data "
+            f"(validation ends {saved_split.validation_end.isoformat()})"
+        )
     if dense_history["demand_date"].max().date() != forecast_date - timedelta(days=1):
         raise ContractError("forecast history must end exactly on D-1")
     skeleton = pd.MultiIndex.from_product(
@@ -167,10 +189,8 @@ def forecast_from_history(
         columns={
             "demand_date": "forecast_date",
             "is_recommendation_eligible": "is_actionable",
-            # Keep the recommendation comparator independent from the selected
-            # approach.  In particular, if same-weekday median wins validation,
-            # comparing it with itself would force every ratio to 1.0 and make
-            # the High rule impossible to trigger.
+            # Weekly change always compares with D-7, regardless of approach.
+            # Demand levels use training quantiles separately from this ratio.
             "lag_7d": "baseline_trip_count",
         }
     )
