@@ -31,14 +31,29 @@ class RecommendationTests(unittest.TestCase):
             }
         )
 
-    def test_high_requires_p75_and_ratio_boundary(self):
+    def test_high_above_p75_with_weekly_growth(self):
         result = add_recommendations(self.row(23, 20), self.thresholds)
         self.assertEqual(result.loc[0, "demand_level"], "High")
         self.assertAlmostEqual(result.loc[0, "demand_ratio"], 1.15)
 
-    def test_p75_without_ratio_is_medium(self):
-        result = add_recommendations(self.row(20, 20), self.thresholds)
-        self.assertEqual(result.loc[0, "demand_level"], "Medium")
+    def test_p75_without_weekly_growth_is_high(self):
+        result = add_recommendations(self.row(20, 40), self.thresholds)
+        self.assertEqual(result.loc[0, "demand_level"], "High")
+
+    def test_demand_boundaries_are_independent_of_weekly_growth(self):
+        for prediction, baseline, level in (
+            (19.99, 1, "Medium"), (10, 100, "Medium"),
+            (9.99, 1, "Low"), (20, 40, "High"),
+        ):
+            with self.subTest(prediction=prediction, baseline=baseline):
+                result = add_recommendations(self.row(prediction, baseline), self.thresholds)
+                self.assertEqual(result.loc[0, "demand_level"], level)
+                self.assertEqual(result.loc[0, "recommendation_version"], "1.2.0")
+
+    def test_zero_prediction_with_zero_thresholds_is_low(self):
+        thresholds = self.thresholds.assign(historical_p50=0, historical_p75=0)
+        result = add_recommendations(self.row(0, 0), thresholds)
+        self.assertEqual(result.loc[0, "demand_level"], "Low")
 
     def test_low_and_smoothed_zero_baseline(self):
         result = add_recommendations(self.row(0.5, 0), self.thresholds)

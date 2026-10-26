@@ -116,7 +116,7 @@ Project tests, including the isolated audit database integration tests:
 ```powershell
 $env:PYTHONPATH = (Resolve-Path "src").Path
 $env:RUN_DB_TESTS = "1"
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
 ```
 
 DAG tests run with Airflow's Python inside its container:

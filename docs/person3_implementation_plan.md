@@ -563,16 +563,21 @@ Tỷ lệ đề xuất:
 demand_ratio = predicted_trip_count / max(historical_baseline, 1)
 ```
 
-### Rule ban đầu
+### Rule hiện hành (recommendation 1.2.0)
 
-| Level | Rule ban đầu |
+Demand level đo nhu cầu so với lịch sử cùng zone-hour; ratio D−7 thể hiện
+thay đổi theo tuần riêng biệt, không quyết định level. Policy 1.1.0 yêu cầu
+ratio >= 1.15 cho High nên seasonal_naive không thể có High dù nhu cầu cao.
+
+| Level | Rule 1.2.0 |
 |---|---|
-| Low | Prediction dưới historical p50 |
-| Medium | Prediction từ p50 đến dưới p75, hoặc ratio từ 1.0 |
-| High | Prediction từ p75 và ratio ít nhất 1.15 |
+| Low | Prediction bằng 0 hoặc dưới historical p50 |
+| Medium | Prediction dương, từ p50 đến dưới p75 |
+| High | Prediction dương và đạt historical p75 |
 
-Đây là rule khởi tạo, không phải threshold cuối. Threshold cuối phải được kiểm
-tra trên validation và khóa trước final test.
+p50/p75 chỉ học từ train, không chỉnh threshold để ép có High. Nhu cầu cao
+ổn định vẫn có thể là High; prediction bằng 0 luôn Low kể cả p75 bằng 0.
+Tham khảo `dss_design.md` cho ý nghĩa và giới hạn của policy.
 
 ### Recommendation text
 

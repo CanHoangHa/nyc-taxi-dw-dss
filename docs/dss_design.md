@@ -57,23 +57,39 @@ The candidate is `HistGradientBoostingRegressor(loss="poisson")`; output is
 clipped at zero. Training fits only the train split. `train` compares the
 candidate and both baselines on validation WAPE and freezes the best approach.
 `evaluate` is a separate command that opens the test split only after that
-choice. MAE, RMSE, and WAPE are reported; WAPE is undefined rather than divided
-by zero when actual demand totals zero.
+choice. Its config split must exactly match the artifact's saved split; other
+settings such as output directory do not change the frozen experiment.
+Forecast dates must be strictly after the saved validation end, covering both
+model fitting and validation-based selection. History through D−1 may overlap
+train/validation for lag and rolling features; it is not a new model fit.
+Missing or invalid saved split metadata is rejected. MAE, RMSE, and WAPE are
+reported; WAPE is undefined rather than divided by zero when actual demand
+totals zero.
 
 ## Demand level and recommendation
 
-Historical p50/p75 thresholds are learned per zone-hour from train only. The
-recommendation comparator is the fixed seasonal-naive value from D−7. It stays
-independent of whichever approach wins validation; otherwise a winning
-same-weekday-median forecast would be compared with itself, forcing every
-ratio to 1.0 and making the High rule impossible to trigger.
+Recommendation version **1.2.0** learns historical p50/p75 thresholds per
+zone-hour from train only. Demand level measures the prediction relative to
+that zone-hour's training history. Weekly growth is a separate signal: the
+fixed D−7 comparator is used regardless of the validation-selected approach.
 
 ```text
-demand_ratio = prediction / max(historical baseline, 1)
-High   = prediction >= p75 and ratio >= 1.15
-Medium = prediction >= p50 or ratio >= 1.0
+demand_ratio = prediction / max(D−7 baseline, 1)
+High   = prediction > 0 and prediction >= p75
+Medium = prediction > 0 and prediction >= p50 (unless High)
 Low    = otherwise
 ```
+
+Version 1.1.0 required both p75 and ratio >= 1.15 for High, and allowed
+ratio >= 1 for Medium. Seasonal-naive prediction equals D−7, so that rule
+could never mark High even for exceptionally high demand. Version 1.2.0
+separates demand magnitude from growth for every approach: stable or falling
+high demand may be High, while growth from a small base does not by itself
+raise the level. Zero prediction stays Low even when training quantiles are
+zero. High is relative to each zone-hour, not an absolute comparison between
+zones or a claim of unmet demand. No quantiles were tuned to force High counts;
+this is an explicit semantic policy change, not evidence of model accuracy.
+Previously persisted runs keep their saved levels and recommendation version.
 
 The Gate C row includes prediction, the D−7 seasonal-naive baseline, both thresholds,
 ratio, level, Vietnamese recommendation text, and an explanation of the rule
