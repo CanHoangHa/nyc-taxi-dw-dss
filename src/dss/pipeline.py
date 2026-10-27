@@ -155,6 +155,8 @@ def evaluate_from_dense(
     """Open the test split after the validation-selected approach is frozen."""
 
     saved_split = _artifact_split(artifact)
+    if getattr(artifact, "fit_end_date", None) is not None:
+        raise ContractError("refit artifact requires separate post-fit evaluation; March is no longer holdout")
     if config.split != saved_split:
         raise ContractError("evaluation split must match the split saved in the artifact")
     features = complete_feature_rows(build_features(dense))
@@ -183,6 +185,9 @@ def forecast_from_history(
     """Create one 24 x eligible-zone day-ahead forecast from history through D-1."""
 
     saved_split = _artifact_split(artifact)
+    fit_end = getattr(artifact, "fit_end_date", None)
+    if fit_end is not None and forecast_date <= date.fromisoformat(fit_end):
+        raise ContractError(f"forecast date must be after actual fit ending {fit_end}")
     if forecast_date <= saved_split.validation_end:
         raise ContractError(
             "forecast date must be after artifact training and validation data "
@@ -257,6 +262,8 @@ def run_forecast(
     demand_repository: DemandRepository | None = None,
     forecast_repository: ForecastRepository | None = None,
 ) -> tuple[object, int]:
+    if getattr(artifact, "fit_end_date", None) is not None:
+        raise ContractError("refit artifacts are offline only; DB selection metadata cannot represent actual fit")
     source = demand_repository or DemandRepository()
     sink = forecast_repository or ForecastRepository()
     history_start = forecast_date - timedelta(days=28)

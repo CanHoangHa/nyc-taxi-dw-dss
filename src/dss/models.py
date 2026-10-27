@@ -46,7 +46,7 @@ class DemandModel:
 
 @dataclass
 class TrainingArtifact:
-    """Auditable output of validation-time model selection."""
+    """Selection record, optionally carrying a separately dated RF refit."""
 
     candidate: DemandModel
     thresholds: pd.DataFrame
@@ -57,6 +57,9 @@ class TrainingArtifact:
     # Default preserves loading legacy joblib instances without this attribute.
     random_forest: DemandModel | None = None
     experiment_metadata: dict[str, Any] = field(default_factory=dict)
+    # Separate actual refit window from immutable selection train/validation.
+    fit_start_date: str | None = None
+    fit_end_date: str | None = None
 
 
 def train_candidate(

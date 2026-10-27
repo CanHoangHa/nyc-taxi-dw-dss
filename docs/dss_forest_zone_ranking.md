@@ -1,5 +1,10 @@
 # Random Forest and zone interval ranking
 
+This document preserves the original Q1 experiment. For the subsequent fixed
+Q1 refit and April check, see [the protocol](dss_april_protocol.md) and
+[the April report](dss_april_evaluation.md). Statements below about April not
+yet being loaded describe the state at the original Q1 experiment.
+
 Base: origin/develop `3b339197a75a2a16307b2f2d6efd6a36f449615a`.
 Implementation branch: `feature/dss-poisson-zone-ranking`.
 The branch name is historical; the active fourth method is Random Forest.
