@@ -25,10 +25,14 @@ src/dbt/packages/
 src/dbt/.user.yml
 
 # Model artifacts
-artifacts/models/
+artifacts/
 models/artifacts/
 *.joblib
 *.pkl
 
 # Local database volumes
 .postgres-data/
+
+# Local working notes and implementation guide
+tmp/
+docs/INGESTION_SELF_IMPLEMENTATION_GUIDE.md

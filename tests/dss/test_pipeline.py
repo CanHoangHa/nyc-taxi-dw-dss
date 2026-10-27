@@ -91,10 +91,13 @@ class PipelineTests(unittest.TestCase):
         changed = replace(
             config, artifact_directory=Path("unused"), model=ModelSettings(max_iter=10)
         )
-        self.assertEqual(
-            evaluate_from_dense(artifact, dense(), config),
-            evaluate_from_dense(artifact, dense(), changed),
-        )
+        expected = evaluate_from_dense(artifact, dense(), config)
+        actual = evaluate_from_dense(artifact, dense(), changed)
+        self.assertEqual(set(expected), set(actual))
+        for method in expected:
+            for metric in expected[method]:
+                # Threaded RF aggregation can differ at floating-point roundoff.
+                self.assertAlmostEqual(expected[method][metric], actual[method][metric], places=10)
 
     def test_missing_artifact_split_rejects_evaluation_and_forecast(self):
         artifact = train_from_dense(dense(), q1_config(), git_commit_sha="test")
@@ -135,10 +138,10 @@ class PipelineTests(unittest.TestCase):
         artifact = train_from_dense(dense(), config, git_commit_sha="abc123")
         self.assertIn(
             artifact.selected_approach,
-            {"model", "seasonal_naive", "same_weekday_median"},
+            {"model", "seasonal_naive", "same_weekday_median", "random_forest"},
         )
         self.assertEqual(set(artifact.validation_metrics), {
-            "model", "seasonal_naive", "same_weekday_median"
+            "model", "seasonal_naive", "same_weekday_median", "random_forest"
         })
         test_metrics = evaluate_from_dense(artifact, dense(), config)
         self.assertEqual(set(test_metrics), set(artifact.validation_metrics))

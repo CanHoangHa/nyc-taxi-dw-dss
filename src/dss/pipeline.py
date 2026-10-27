@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 from datetime import date, timedelta
 import json
+import hashlib
 from pathlib import Path
 import subprocess
+from time import perf_counter
 from typing import Sequence
 from uuid import uuid4
 
@@ -27,6 +29,10 @@ from dss.models import (
     load_training_artifact,
     save_training_artifact,
     train_candidate,
+    train_random_forest,
+    RF_NAME,
+    RF_VERSION,
+    validate_supported_artifact,
 )
 from dss.persistence import ForecastRepository, ModelRunMetadata
 from dss.recommendation import (
@@ -66,6 +72,7 @@ def train_from_dense(
     features = complete_feature_rows(build_features(dense))
     parts = split_by_date(features, config.split)
     settings = config.model
+    fit_start = perf_counter()
     candidate = train_candidate(
         parts.train,
         max_iter=settings.max_iter,
@@ -73,15 +80,28 @@ def train_from_dense(
         max_leaf_nodes=settings.max_leaf_nodes,
         random_state=settings.random_state,
     )
+    boosting_fit_seconds = perf_counter() - fit_start
     validation = add_baseline_predictions(parts.validation)
     validation["prediction_model"] = candidate.predict(validation)
+    fit_start = perf_counter()
+    random_forest = train_random_forest(parts.train)
+    forest_fit_seconds = perf_counter() - fit_start
+    validation["prediction_random_forest"] = random_forest.predict(validation)
     prediction_columns = {
         APPROACH_MODEL: "prediction_model",
         APPROACH_SEASONAL: "prediction_seasonal_naive",
         APPROACH_MEDIAN: "prediction_same_weekday_median",
+        RF_NAME: "prediction_random_forest",
     }
     metrics = {
         approach: regression_metrics(validation["trip_count"], validation[column])
+        for approach, column in prediction_columns.items()
+    }
+    training = add_baseline_predictions(parts.train)
+    training["prediction_model"] = candidate.predict(training)
+    training["prediction_random_forest"] = random_forest.predict(training)
+    train_metrics = {
+        approach: regression_metrics(training["trip_count"], training[column])
         for approach, column in prediction_columns.items()
     }
     selected = min(
@@ -95,11 +115,29 @@ def train_from_dense(
         validation_metrics=metrics,
         config=config_as_dict(config),
         git_commit_sha=git_commit_sha,
+        random_forest=random_forest,
+        experiment_metadata={
+            "experiment_version": "3.0.0",
+            "selection_metric": "validation WAPE",
+            "selection_tie_order": list(prediction_columns),
+            "train_metrics": train_metrics,
+            "fit_seconds": {APPROACH_MODEL: boosting_fit_seconds, RF_NAME: forest_fit_seconds,
+                            APPROACH_SEASONAL: 0.0, APPROACH_MEDIAN: 0.0},
+            "source": source_provenance(),
+            "methods": {
+                APPROACH_MODEL: candidate.metadata,
+                RF_NAME: random_forest.metadata,
+                APPROACH_SEASONAL: {"model_name": APPROACH_SEASONAL, "model_version": "1.0.0"},
+                APPROACH_MEDIAN: {"model_name": APPROACH_MEDIAN, "model_version": "1.0.0"},
+            },
+            "test_status": "Q1 March 16-31 previously viewed; retrospective/exploratory only",
+        },
     )
 
 
 def _artifact_split(artifact: TrainingArtifact) -> TemporalSplit:
     """Read the immutable experiment boundaries used to fit and select models."""
+    validate_supported_artifact(artifact)
     try:
         split = TemporalSplit(**{
             field: date.fromisoformat(artifact.config["split"][field])
@@ -127,6 +165,9 @@ def evaluate_from_dense(
         APPROACH_SEASONAL: "prediction_seasonal_naive",
         APPROACH_MEDIAN: "prediction_same_weekday_median",
     }
+    if getattr(artifact, "random_forest", None) is not None:
+        test["prediction_random_forest"] = artifact.random_forest.predict(test)
+        columns[RF_NAME] = "prediction_random_forest"
     return {
         approach: regression_metrics(test["trip_count"], test[column])
         for approach, column in columns.items()
@@ -168,6 +209,8 @@ def forecast_from_history(
 
     if artifact.selected_approach == APPROACH_MODEL:
         prediction = artifact.candidate.predict(feature_rows)
+    elif artifact.selected_approach == RF_NAME and getattr(artifact, "random_forest", None) is not None:
+        prediction = artifact.random_forest.predict(feature_rows)
     elif artifact.selected_approach in (APPROACH_SEASONAL, APPROACH_MEDIAN):
         prediction = predict_baseline(feature_rows, artifact.selected_approach).to_numpy()
     else:
@@ -228,14 +271,15 @@ def run_forecast(
                 MODEL_NAME if artifact.selected_approach == APPROACH_MODEL
                 else artifact.selected_approach
             ),
-            model_version=MODEL_VERSION,
+            model_version=RF_VERSION if artifact.selected_approach == RF_NAME else MODEL_VERSION,
             feature_version=FEATURE_VERSION,
             recommendation_version=RECOMMENDATION_VERSION,
             train_start_date=date.fromisoformat(split["train_start"]),
             train_end_date=date.fromisoformat(split["train_end"]),
             validation_start_date=date.fromisoformat(split["validation_start"]),
             validation_end_date=date.fromisoformat(split["validation_end"]),
-            metrics={"validation": artifact.validation_metrics},
+            metrics={"validation": artifact.validation_metrics,
+                     "experiment": getattr(artifact, "experiment_metadata", {})},
             git_commit_sha=artifact.git_commit_sha,
         ),
         forecasts,
@@ -317,6 +361,19 @@ def _git_sha() -> str:
         text=True,
     )
     return completed.stdout.strip()
+
+
+def source_provenance() -> dict:
+    """Hash a bounded allowlist of experiment sources, never local secrets/data."""
+    root = Path(__file__).resolve().parents[2]
+    paths = sorted({*root.glob("src/dss/*.py"), *root.glob("scripts/*.py"),
+                    root / "src/dashboard/app.py", root / "configs/dss_q1.toml",
+                    root / "requirements.txt", root / ".gitignore"})
+    status = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                            check=True, capture_output=True, text=True).stdout
+    return {"git_commit_sha": _git_sha(), "working_tree_dirty": bool(status.strip()),
+            "sha256": {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                       for path in paths}}
 
 
 if __name__ == "__main__":
