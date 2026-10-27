@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -10,7 +10,11 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
+import sklearn
 
 from dss.contracts import ContractError
 from dss.features import MODEL_FEATURES
@@ -19,22 +23,30 @@ from dss.features import MODEL_FEATURES
 MODEL_NAME = "hist_gradient_boosting_poisson"
 MODEL_VERSION = "1.0.0"
 FEATURE_VERSION = "1.0.0"
+RF_NAME = "random_forest"
+RF_VERSION = "1.0.0"
+RF_CATEGORICAL = ("pickup_location_id",)
+RF_NUMERIC = tuple(c for c in MODEL_FEATURES if c not in RF_CATEGORICAL)
 
 
 @dataclass
 class DemandModel:
-    estimator: HistGradientBoostingRegressor
+    estimator: Any
     metadata: dict[str, Any]
 
     def predict(self, features: pd.DataFrame) -> np.ndarray:
+        if self.metadata.get("model_name") == "poisson_regression":
+            raise ContractError("experimental Poisson regression model is no longer supported")
         matrix = _feature_matrix(features)
         raw = self.estimator.predict(matrix)
+        if not np.isfinite(raw).all():
+            raise ContractError("model predictions must be finite")
         return np.maximum(0.0, raw.astype("float64"))
 
 
 @dataclass
 class TrainingArtifact:
-    """Auditable output of validation-time model selection."""
+    """Selection record, optionally carrying a separately dated RF refit."""
 
     candidate: DemandModel
     thresholds: pd.DataFrame
@@ -42,6 +54,12 @@ class TrainingArtifact:
     validation_metrics: dict[str, dict[str, float]]
     config: dict[str, Any]
     git_commit_sha: str
+    # Default preserves loading legacy joblib instances without this attribute.
+    random_forest: DemandModel | None = None
+    experiment_metadata: dict[str, Any] = field(default_factory=dict)
+    # Separate actual refit window from immutable selection train/validation.
+    fit_start_date: str | None = None
+    fit_end_date: str | None = None
 
 
 def train_candidate(
@@ -93,6 +111,45 @@ def train_candidate(
     return DemandModel(estimator=estimator, metadata=metadata)
 
 
+RF_SETTINGS = dict(n_estimators=64, max_depth=16, min_samples_leaf=10,
+                   max_features=0.7, n_jobs=2, random_state=42)
+
+
+def train_random_forest(training: pd.DataFrame) -> DemandModel:
+    """Bounded RF with train-only categorical zone encoding; trees need no scaling."""
+    matrix = _feature_matrix(training)
+    target = pd.to_numeric(training["trip_count"], errors="raise").to_numpy(dtype=float)
+    if not len(target) or not np.isfinite(target).all() or (target < 0).any():
+        raise ContractError("RF training target must be finite and non-negative")
+    estimator = Pipeline([
+        ("preprocess", ColumnTransformer([
+            ("categorical", OneHotEncoder(handle_unknown="ignore", dtype=np.float32), list(RF_CATEGORICAL)),
+            ("numeric", "passthrough", list(RF_NUMERIC)),
+        ], sparse_threshold=1.0)),
+        ("regressor", RandomForestRegressor(**RF_SETTINGS)),
+    ])
+    estimator.fit(matrix, target)
+    dates = pd.to_datetime(training["demand_date"])
+    return DemandModel(estimator, {
+        "model_name": RF_NAME, "model_version": RF_VERSION,
+        "feature_version": FEATURE_VERSION, "preprocessing_version": "rf-onehot-zone-1.0.0",
+        "sklearn_version": sklearn.__version__, "trained_at": datetime.now(UTC).isoformat(),
+        "training_row_count": len(training),
+        "train_start_date": dates.min().date().isoformat(),
+        "train_end_date": dates.max().date().isoformat(),
+        "feature_columns": list(MODEL_FEATURES),
+        "categorical_columns": list(RF_CATEGORICAL),
+        "numeric_columns": list(RF_NUMERIC),
+        "hyperparameters": RF_SETTINGS.copy(),
+    })
+
+
+def validate_supported_artifact(artifact: TrainingArtifact) -> None:
+    """Experimental GLM artifacts are archived, not silently reinterpreted."""
+    if getattr(artifact, "poisson", None) is not None or artifact.selected_approach == "poisson_regression":
+        raise ContractError("experimental Poisson regression artifact is no longer supported; retain it for audit and train a new RF artifact")
+
+
 def save_model(model: DemandModel, path: Path) -> Path:
     """Persist one immutable model artifact; refuse accidental overwrite."""
 
@@ -110,6 +167,8 @@ def load_model(path: Path) -> DemandModel:
     value = joblib.load(Path(path))
     if not isinstance(value, DemandModel):
         raise ContractError("artifact is not a DSS DemandModel")
+    if value.metadata.get("model_name") == "poisson_regression":
+        raise ContractError("experimental Poisson regression model is no longer supported")
     return value
 
 
@@ -126,6 +185,7 @@ def load_training_artifact(path: Path) -> TrainingArtifact:
     value = joblib.load(Path(path))
     if not isinstance(value, TrainingArtifact):
         raise ContractError("artifact is not a DSS TrainingArtifact")
+    validate_supported_artifact(value)
     return value
 
 

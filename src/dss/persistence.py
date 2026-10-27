@@ -128,6 +128,17 @@ class ForecastRepository:
                 )
                 return [row[0] for row in cursor.fetchall()]
 
+    def ranking_zones(self) -> pd.DataFrame:
+        """One bulk dimension read; never infer candidate coverage from forecasts."""
+        with self._connection() as connection:
+            with connection.cursor(row_factory=dict_row) as cursor:
+                cursor.execute(
+                    "SELECT location_id AS pickup_location_id, borough, zone_name, "
+                    "is_recommendation_eligible AS is_actionable "
+                    "FROM dw.dim_taxi_zone WHERE location_id IS NOT NULL ORDER BY location_id"
+                )
+                return pd.DataFrame(cursor.fetchall())
+
     def latest_run(self, forecast_date: date | None = None) -> dict[str, Any] | None:
         parameters: tuple[date, ...] = ()
         condition = ""

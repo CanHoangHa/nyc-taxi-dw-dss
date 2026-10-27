@@ -351,7 +351,7 @@ slice/dice. SQL lives in `src/dashboard/analytics_repository.py`, not in the
 view. The app reads `mart.mart_zone_hour_demand` and
 `mart.mart_demand_coverage`; it does not read RAW.
 
-The mart is sparse and January-March 2024 are currently loaded. An absent
+The mart is sparse and January-April 2024 are currently loaded. An absent
 combination in a month listed by `mart.mart_demand_coverage` means zero
 **valid** pickups; an unlisted month has unavailable data. Use the refresh button after a dbt rebuild or wait
 up to five minutes for the dashboard cache. Query definitions, four runnable
@@ -388,7 +388,7 @@ python -m dss.pipeline forecast `
   --date 2024-04-01
 ```
 
-Training compares a Poisson gradient-boosting candidate with seasonal-naive
+Training compares Poisson gradient boosting and Random Forest with seasonal-naive
 and same-weekday-median baselines on validation only. Evaluation opens the test
 split after selection and requires the same split boundaries saved in the artifact.
 Forecast dates must be strictly after the artifact's validation end, since
@@ -401,3 +401,23 @@ separately describes weekly change. Stable high demand can be High even when
 seasonal naive is selected and the ratio equals 1. See
 `docs/dss_design.md` and `docs/gate_c_handoff.md` for contracts, limitations,
 and the complete runbook.
+
+### Fixed Q1 refit and April holdout (offline)
+
+The validation-selected RF can be refitted on all January 29–March 31 rows
+without rerunning selection. Selection boundaries remain immutable; the new
+artifact separately records its actual fit window. March is then fit data,
+and evaluation uses April 1–30 with actual history only through each D−1.
+Refit artifacts cannot be published with the old Gate C schema.
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path 'src').Path
+$env:OMP_NUM_THREADS = '2'
+.\.venv\Scripts\python.exe scripts/evaluate_dss_april.py refit
+.\.venv\Scripts\python.exe scripts/evaluate_dss_april.py evaluate --artifact artifacts/models/<refit-directory>/model.joblib
+```
+
+Use the saved artifact to repeat evaluation without fitting again. See
+[the frozen protocol](docs/dss_april_protocol.md) and
+[the April report](docs/dss_april_evaluation.md) for exact paths, data build
+commands, regression metrics, paired ranking evaluation, and limitations.
