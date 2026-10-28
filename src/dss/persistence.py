@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 import json
+import re
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -50,6 +51,11 @@ class ModelRunMetadata:
     validation_end_date: date
     metrics: Mapping[str, Any]
     git_commit_sha: str
+    fit_kind: str = "selection"
+    fit_start_date: date | None = None
+    fit_end_date: date | None = None
+    fit_seconds: float | None = None
+    artifact_sha256: str | None = None
 
 
 class ForecastRepository:
@@ -77,17 +83,47 @@ class ForecastRepository:
 
         _validate_metadata(metadata)
         normalized = validate_forecasts(forecasts)
+        fit_end = metadata.fit_end_date or metadata.train_end_date
+        if normalized.forecast_date.min() <= max(fit_end, metadata.validation_end_date):
+            raise ContractError("forecast dates must be after selection validation and actual fit")
         identifier = run_id or uuid4()
         with self._connection() as connection:
             with connection.transaction():
+                if metadata.artifact_sha256 is not None:
+                    # Serialize publications of one immutable artifact, including retries.
+                    connection.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                                       (metadata.artifact_sha256,))
+                    dates = sorted(normalized.forecast_date.unique().tolist())
+                    with connection.cursor(row_factory=dict_row) as cursor:
+                        cursor.execute(
+                            "SELECT r.* FROM dss.model_run r WHERE artifact_sha256 = %s "
+                            "AND EXISTS (SELECT 1 FROM dss.zone_hour_forecast f WHERE f.run_id = r.run_id "
+                            "AND f.forecast_date = ANY(%s)) ORDER BY created_at DESC, run_id DESC",
+                            (metadata.artifact_sha256, dates),
+                        )
+                        existing = cursor.fetchall()
+                    if existing:
+                        expected = asdict(metadata)
+                        expected["metrics_json"] = expected.pop("metrics")
+                        for run in existing:
+                            if any(run[key] != value for key, value in expected.items()):
+                                continue
+                            old = validate_forecasts(self.read_forecasts(run["run_id"]))
+                            try:
+                                pd.testing.assert_frame_equal(old, normalized, check_dtype=False,
+                                                              check_exact=False, rtol=1e-12, atol=1e-10)
+                            except AssertionError:
+                                continue
+                            return run["run_id"]
+                        raise ContractError("existing artifact/date run differs; inspect before publishing again")
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "INSERT INTO dss.model_run ("
                         "run_id, model_name, model_version, feature_version, "
                         "recommendation_version, train_start_date, train_end_date, "
                         "validation_start_date, validation_end_date, metrics_json, "
-                        "git_commit_sha) VALUES ("
-                        "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+                        "git_commit_sha, fit_kind, fit_start_date, fit_end_date, fit_seconds, artifact_sha256) VALUES ("
+                        "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)",
                         (
                             identifier,
                             metadata.model_name,
@@ -100,6 +136,11 @@ class ForecastRepository:
                             metadata.validation_end_date,
                             json.dumps(metadata.metrics, allow_nan=False),
                             metadata.git_commit_sha,
+                            metadata.fit_kind,
+                            metadata.fit_start_date,
+                            metadata.fit_end_date,
+                            metadata.fit_seconds,
+                            metadata.artifact_sha256,
                         ),
                     )
                     cursor.executemany(
@@ -273,6 +314,21 @@ def _validate_metadata(metadata: ModelRunMetadata) -> None:
         <= metadata.validation_end_date
     ):
         raise ContractError("model-run train and validation dates must be ordered")
+    start, end = metadata.fit_start_date, metadata.fit_end_date
+    if ((start is None) != (end is None) or metadata.fit_kind not in {"selection", "refit"}
+            or (start is not None and start > end)):
+        raise ContractError("model-run actual fit dates and kind must be valid")
+    if metadata.fit_kind == "refit":
+        if start != metadata.train_start_date or end is None or end < metadata.validation_end_date:
+            raise ContractError("refit must include the selection train and validation window")
+        if "validation" in metadata.metrics:
+            raise ContractError("refit validation metrics must be labelled selection_validation")
+    elif start is not None and (start != metadata.train_start_date or end != metadata.train_end_date):
+        raise ContractError("selection fit dates must match selection train dates")
+    if metadata.fit_seconds is not None and (not np.isfinite(metadata.fit_seconds) or metadata.fit_seconds < 0):
+        raise ContractError("actual fit seconds must be finite and non-negative")
+    if metadata.artifact_sha256 is not None and not re.fullmatch("[a-f0-9]{64}", metadata.artifact_sha256):
+        raise ContractError("artifact SHA256 must be 64 lowercase hex characters")
     try:
         json.dumps(metadata.metrics, allow_nan=False)
     except (TypeError, ValueError) as error:

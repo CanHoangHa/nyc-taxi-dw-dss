@@ -168,15 +168,10 @@ def show_olap(filters):
         st.caption(f"Tổng các nhóm đang hiển thị: {frame['trip_count'].sum():,} chuyến.")
 
 
-@st.cache_data(ttl=300, show_spinner=False)
 def dss_forecasts(forecast_date):
     service = DssService()
-    return (
-        service.latest_run_summary(forecast_date),
-        service.ranked_recommendations(forecast_date),
-        service.model_metrics(forecast_date),
-        service.ranking_zones(),
-    )
+    run, rows, metrics = service.forecast_snapshot(forecast_date)
+    return run, rows, metrics, service.ranking_zones()
 
 
 def show_dss():
@@ -203,11 +198,12 @@ def show_dss():
     operational_zones = zone_reference.loc[zone_reference["is_actionable"]]
     boroughs = sorted(operational_zones["borough"].dropna().unique().tolist())
     with st.sidebar:
-        borough_label = st.selectbox("Borough dự báo", boroughs)
+        borough_label = st.selectbox("Borough dự báo", boroughs,
+                                     index=boroughs.index("Manhattan") if "Manhattan" in boroughs else 0)
         forecast_hours = st.slider(
             "Khoảng giờ dự báo [bắt đầu, kết thúc)", min_value=0, max_value=24, value=(6, 10)
         )
-        st.caption("06:00–10:00 gồm giờ 6, 7, 8, 9. API chi tiết cũ vẫn bao gồm hai đầu.")
+        st.caption("[8,9) xem một giờ; [6,10) gồm giờ 6, 7, 8, 9 (giờ New York).")
         available_zones = operational_zones
         if borough_label != "Tất cả":
             available_zones = operational_zones.loc[operational_zones["borough"].eq(borough_label)]
@@ -265,6 +261,24 @@ def show_dss():
         f"Model {run['model_version']} · feature {run['feature_version']} · "
         f"recommendation {run['recommendation_version']}"
     )
+    is_refit = run.get("fit_kind", "selection") == "refit"
+    def show_date(value):
+        return pd.Timestamp(value).strftime("%d/%m/%Y") if value is not None else "chưa ghi nhận"
+    fit_start = run.get("fit_start_date") or run.get("train_start_date")
+    fit_end = run.get("fit_end_date") or run.get("train_end_date")
+    fit_seconds = run.get("fit_seconds")
+    duration = f"{fit_seconds:.2f} giây" if fit_seconds is not None else "chưa ghi nhận"
+    st.caption(
+        f"{'RF đã refit' if is_refit else 'Model chưa refit'} · Fit dữ liệu thực tế: "
+        f"{show_date(fit_start)}–{show_date(fit_end)} · Thời gian fit: {duration}."
+    )
+    st.caption(
+        f"Selection: train {show_date(run.get('train_start_date'))}–{show_date(run.get('train_end_date'))}; "
+        f"validation {show_date(run.get('validation_start_date'))}–{show_date(run.get('validation_end_date'))}."
+    )
+    st.caption(f"Run {run['run_id']} · Chọn run mới nhất cho ngày này theo created_at, rồi run_id.")
+    if is_refit and forecast_date == date(2024, 4, 1):
+        st.info("01/04/2024 là demo lịch sử: actual đã có. Forecast chỉ dùng lịch sử đến 31/03 (D−1).")
     if model_name in {"seasonal_naive", "same_weekday_median"}:
         st.info(
             "Baseline này được chọn vì có WAPE validation thấp nhất; hệ thống không "
@@ -363,7 +377,7 @@ def show_dss():
         },
     )
 
-    validation = metrics.get("validation", {}) if isinstance(metrics, dict) else {}
+    validation = metrics.get("selection_validation", metrics.get("validation", {})) if isinstance(metrics, dict) else {}
     if isinstance(validation, dict) and validation:
         metric_rows = []
         for approach, values in validation.items():
@@ -382,7 +396,9 @@ def show_dss():
                     "WAPE (%)": 100 * values["wape"] if values.get("wape") is not None else None,
                 }
             )
-        with st.expander("Chi tiết đánh giá validation"):
+        with st.expander("Validation dùng cho selection (model gốc)"):
+            if is_refit:
+                st.caption("Metrics của lần chọn model trước refit; không phải validation của RF đã refit.")
             st.dataframe(
                 pd.DataFrame(metric_rows),
                 width="stretch",
@@ -392,6 +408,18 @@ def show_dss():
                     "RMSE": st.column_config.NumberColumn(format="%.3f"),
                     "WAPE (%)": st.column_config.NumberColumn(format="%.2f%%"),
                 },
+            )
+    if is_refit:
+        with st.expander("Đánh giá lịch sử tháng 4/2024 — tách khỏi forecast đang xem"):
+            st.write(
+                "Kiểm chứng day-ahead 01–30/04 trên cùng 189.360 zone-hour: "
+                "WAPE RF refit 17,87%; RF cũ 18,32%; median 18,06%; D−7 21,85%. "
+                "Mỗi ngày chỉ dùng actual đến D−1; April không dùng chọn model hay tuning."
+            )
+            st.caption(
+                "Thí nghiệm RF Q1 cố định, chi tiết trong docs/dss_april_evaluation.md. "
+                "Ranking chỉ cải thiện rất nhẹ so với D−7; không chứng minh hiệu quả điều xe. "
+                "Đây là kết quả cả tháng, không phải độ chính xác của ngày/giờ đang chọn."
             )
     st.caption(
         f"Run {run['run_id']} · dữ liệu đọc từ Gate C, không train lại trong dashboard."

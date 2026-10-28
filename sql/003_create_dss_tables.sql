@@ -103,3 +103,6 @@ CREATE INDEX IF NOT EXISTS model_run_created_at_idx
     ON dss.model_run (created_at DESC);
 
 COMMIT;
+
+-- Include the same idempotent upgrade for fresh bootstrap and existing installs.
+\ir 004_dss_actual_fit.sql

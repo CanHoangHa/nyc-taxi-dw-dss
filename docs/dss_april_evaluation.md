@@ -1,5 +1,11 @@
 # RF refit Q1 và kiểm chứng tháng 4/2024
 
+Cập nhật 28/10/2026: RF refit đã được publish cho demo lịch sử 01/04/2024,
+run `90e17b55-0c16-44c8-8744-509dc0562dea` (6.312 forecast rows). Metadata
+selection và actual fit được lưu riêng, giữ nguyên artifact và mọi run cũ.
+Xem [migration → publish → dashboard](dss_refit_publication_runbook.md).
+Các mô tả "offline" bên dưới ghi lại trạng thái tại lượt thí nghiệm ban đầu.
+
 ## Kết quả tháng mới
 
 Train thêm toàn bộ March giúp RF cải thiện nhẹ trên April so với RF cũ: WAPE giảm **0,456 điểm phần trăm** (giảm tương đối 2,49%). RF refit tốt hơn D−7 rõ hơn, nhưng chỉ nhỉnh hơn weekday median **0,196 điểm phần trăm**. Đây là kết quả trên tháng mới, không dùng để chọn lại model.
@@ -104,7 +110,7 @@ Artifact giữ selection config/validation gốc và ghi `fit_start_date`,
 fit hay lựa chọn lại trong thí nghiệm này. Dữ liệu khuyến nghị p50/p75 được tính
 lại trên cùng fit window; ranking ở đây chỉ dùng tổng dự báo, không dùng nhãn.
 
-Kết quả giữ offline. `run_forecast` từ chối publish refit vào schema Gate C cũ
+Tại lượt thí nghiệm ban đầu, kết quả giữ offline. `run_forecast` từ chối publish refit vào schema Gate C cũ
 vì schema đó biểu diễn selection train/validation, chưa biểu diễn đúng refit.
 Không sửa CHECK, không tạo split giả và không đổi dashboard. Các artifact/run
 cũ được giữ nguyên và đối chiếu checksum.

@@ -33,6 +33,8 @@ from dss.models import (
     RF_NAME,
     RF_VERSION,
     validate_supported_artifact,
+    actual_fit_window,
+    load_publication_artifact,
 )
 from dss.persistence import ForecastRepository, ModelRunMetadata
 from dss.recommendation import (
@@ -185,16 +187,29 @@ def forecast_from_history(
     """Create one 24 x eligible-zone day-ahead forecast from history through D-1."""
 
     saved_split = _artifact_split(artifact)
-    fit_end = getattr(artifact, "fit_end_date", None)
-    if fit_end is not None and forecast_date <= date.fromisoformat(fit_end):
-        raise ContractError(f"forecast date must be after actual fit ending {fit_end}")
+    _, fit_end, _ = actual_fit_window(artifact)
     if forecast_date <= saved_split.validation_end:
         raise ContractError(
             "forecast date must be after artifact training and validation data "
             f"(validation ends {saved_split.validation_end.isoformat()})"
         )
-    if dense_history["demand_date"].max().date() != forecast_date - timedelta(days=1):
+    if forecast_date <= fit_end:
+        raise ContractError(f"forecast date must be after actual fit ending {fit_end}")
+    if dense_history.empty or pd.to_datetime(dense_history["demand_date"]).max().date() != forecast_date - timedelta(days=1):
         raise ContractError("forecast history must end exactly on D-1")
+    if set(zones.pickup_location_id) != set(artifact.thresholds.pickup_location_id):
+        raise ContractError("forecast zone universe must match the saved artifact")
+    # Reject holes before feature construction; missing demand is not zero.
+    recent = dense_history.loc[pd.to_datetime(dense_history.demand_date).ge(
+        pd.Timestamp(forecast_date - timedelta(days=28)))]
+    expected_history = pd.MultiIndex.from_product(
+        [pd.date_range(forecast_date - timedelta(days=28), periods=28), range(24), zones.pickup_zone_key],
+        names=["demand_date", "demand_hour", "pickup_zone_key"],
+    )
+    actual_history = pd.MultiIndex.from_frame(recent[list(expected_history.names)])
+    if (actual_history.has_duplicates or len(actual_history) != len(expected_history)
+            or not expected_history.isin(actual_history).all()):
+        raise ContractError("forecast requires complete 28-day history for all cells")
     skeleton = pd.MultiIndex.from_product(
         [[pd.Timestamp(forecast_date)], range(24), zones["pickup_zone_key"]],
         names=["demand_date", "demand_hour", "pickup_zone_key"],
@@ -261,9 +276,12 @@ def run_forecast(
     *,
     demand_repository: DemandRepository | None = None,
     forecast_repository: ForecastRepository | None = None,
+    artifact_sha256: str | None = None,
 ) -> tuple[object, int]:
-    if getattr(artifact, "fit_end_date", None) is not None:
-        raise ContractError("refit artifacts are offline only; DB selection metadata cannot represent actual fit")
+    saved_split = _artifact_split(artifact)
+    fit_start, fit_end, fit_kind = actual_fit_window(artifact)
+    if forecast_date <= max(saved_split.validation_end, fit_end):
+        raise ContractError("forecast date must be after selection validation and actual fit")
     source = demand_repository or DemandRepository()
     sink = forecast_repository or ForecastRepository()
     history_start = forecast_date - timedelta(days=28)
@@ -272,6 +290,10 @@ def run_forecast(
     history = load_dense_dataset(source, history_start, history_end)
     forecasts = forecast_from_history(artifact, history, zones, forecast_date)
     split = artifact.config["split"]
+    experiment = getattr(artifact, "experiment_metadata", {})
+    fit_seconds = experiment.get("fit_seconds")
+    if isinstance(fit_seconds, dict):
+        fit_seconds = fit_seconds.get(artifact.selected_approach)
     run_id = sink.save_run(
         ModelRunMetadata(
             model_name=(
@@ -285,9 +307,11 @@ def run_forecast(
             train_end_date=date.fromisoformat(split["train_end"]),
             validation_start_date=date.fromisoformat(split["validation_start"]),
             validation_end_date=date.fromisoformat(split["validation_end"]),
-            metrics={"validation": artifact.validation_metrics,
-                     "experiment": getattr(artifact, "experiment_metadata", {})},
+            metrics={"selection_validation" if fit_kind == "refit" else "validation": artifact.validation_metrics,
+                     "experiment": experiment},
             git_commit_sha=artifact.git_commit_sha,
+            fit_kind=fit_kind, fit_start_date=fit_start, fit_end_date=fit_end,
+            fit_seconds=fit_seconds, artifact_sha256=artifact_sha256,
         ),
         forecasts,
     )
@@ -326,8 +350,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(json.dumps({"test_metrics": evaluate_from_dense(artifact, dense, config)}))
         elif arguments.command == "forecast":
-            artifact = load_training_artifact(arguments.artifact)
-            run_id, rows = run_forecast(artifact, arguments.date)
+            artifact, digest = load_publication_artifact(arguments.artifact)
+            run_id, rows = run_forecast(artifact, arguments.date, artifact_sha256=digest)
             print(json.dumps({"run_id": str(run_id), "forecast_rows": rows}))
         return 0
     except (ContractError, FileNotFoundError, ValueError) as error:
