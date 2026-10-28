@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -187,6 +189,51 @@ def load_training_artifact(path: Path) -> TrainingArtifact:
         raise ContractError("artifact is not a DSS TrainingArtifact")
     validate_supported_artifact(value)
     return value
+
+
+def actual_fit_window(artifact: TrainingArtifact) -> tuple[date, date, str]:
+    """Resolve legacy selection fits and reject incomplete/inconsistent refits."""
+    start = getattr(artifact, "fit_start_date", None)
+    end = getattr(artifact, "fit_end_date", None)
+    if start is None and end is None:
+        split = artifact.config["split"]
+        return date.fromisoformat(split["train_start"]), date.fromisoformat(split["train_end"]), "selection"
+    try:
+        start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
+    except (TypeError, ValueError) as error:
+        raise ContractError("actual fit requires valid start and end dates") from error
+    forest = getattr(artifact, "random_forest", None)
+    if (artifact.selected_approach != RF_NAME or forest is None
+            or start_date != date.fromisoformat(artifact.config["split"]["train_start"])
+            or end_date < date.fromisoformat(artifact.config["split"]["validation_end"])
+            or forest.metadata.get("train_start_date") != start
+            or forest.metadata.get("train_end_date") != end):
+        raise ContractError("actual fit window must match the refitted RF and include selection data")
+    return start_date, end_date, "refit"
+
+
+def load_publication_artifact(path: Path) -> tuple[TrainingArtifact, str]:
+    """Verify a refit's manifest before loading the trusted local joblib."""
+    path = Path(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest_path = path.parent / "manifest.json"
+    manifest = None
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if (manifest.get("artifact_sha256") != digest
+                or manifest.get("files_sha256", {}).get(path.name) != digest):
+            raise ContractError("artifact SHA256 disagrees with publication manifest")
+    artifact = load_training_artifact(path)
+    _, _, kind = actual_fit_window(artifact)
+    if kind == "refit":
+        if manifest is None or manifest.get("metadata") != artifact.experiment_metadata:
+            raise ContractError("refit publication requires a matching manifest and metadata")
+        selection = artifact.experiment_metadata.get("selection", {})
+        if (selection.get("config") != artifact.config
+                or selection.get("validation_metrics") != artifact.validation_metrics
+                or artifact.experiment_metadata.get("actual_fit") != artifact.random_forest.metadata):
+            raise ContractError("refit manifest must preserve selection and actual fit metadata")
+    return artifact, digest
 
 
 def _feature_matrix(features: pd.DataFrame) -> pd.DataFrame:

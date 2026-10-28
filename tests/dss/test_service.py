@@ -62,6 +62,16 @@ class DssServiceTests(unittest.TestCase):
         metrics = self.service.model_metrics(date(2024, 4, 1))
         self.assertEqual(metrics["validation"]["wape"], 0.2)
 
+    def test_snapshot_keeps_metadata_metrics_and_rows_on_one_run(self):
+        from unittest.mock import patch
+        repository = FakeRepository()
+        with patch.object(repository, "latest_run", wraps=repository.latest_run) as latest:
+            run, rows, metrics = DssService(repository).forecast_snapshot(date(2024, 4, 1))
+        self.assertEqual(latest.call_count, 1)
+        self.assertEqual(run["run_id"], repository.run_id)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(metrics["validation"]["wape"], 0.2)
+
 
 if __name__ == "__main__":
     unittest.main()

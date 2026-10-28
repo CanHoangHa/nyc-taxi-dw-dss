@@ -26,6 +26,15 @@ class DssService:
     def latest_run_summary(self, forecast_date: date) -> dict[str, Any] | None:
         return self.repository.latest_run(forecast_date)
 
+    def forecast_snapshot(self, forecast_date: date) -> tuple[dict | None, pd.DataFrame, dict]:
+        """Resolve latest once so a concurrent publication cannot mix runs."""
+        run = self.repository.latest_run(forecast_date)
+        if run is None:
+            return None, pd.DataFrame(), {}
+        rows = self.repository.read_forecasts(UUID(str(run["run_id"])), forecast_date=forecast_date)
+        metrics = run.get("metrics_json", {})
+        return run, rows, metrics if isinstance(metrics, dict) else {}
+
     def ranked_recommendations(
         self,
         forecast_date: date,

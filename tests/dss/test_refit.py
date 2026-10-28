@@ -46,15 +46,15 @@ class RefitTests(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, "complete|grid"):
             self.refit(frame)
 
-    def test_refit_blocks_march_holdout_and_database_publication(self):
+    def test_refit_blocks_march_holdout_and_forecasts_within_fit(self):
         artifact = self.refit()
         with self.assertRaisesRegex(ContractError, "fit"):
             forecast_from_history(artifact, dense(89), eligible_zones(), date(2024, 3, 31))
         with self.assertRaisesRegex(ContractError, "refit"):
             evaluate_from_dense(artifact, dense(), q1_config())
         with patch("dss.pipeline.DemandRepository") as repository:
-            with self.assertRaisesRegex(ContractError, "offline"):
-                run_forecast(artifact, date(2024, 4, 1))
+            with self.assertRaisesRegex(ContractError, "after"):
+                run_forecast(artifact, date(2024, 3, 31))
             repository.assert_not_called()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "refit.joblib"
