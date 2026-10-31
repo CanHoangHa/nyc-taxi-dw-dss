@@ -13,20 +13,43 @@ The analytical Overview/OLAP views and the Person 3 day-ahead DSS pipeline,
 versioned Gate C output, and forecast/recommendation view are implemented. The
 source Parquet, model artifacts, and loaded PostgreSQL data remain local.
 
+As of 31 October 2026, the verified local prototype contains January–April
+2024. Random Forest was selected on Q1 validation, refitted through 31 March,
+evaluated on April, and published for the historical 1–30 April demo. The
+dashboard includes chart drill-down, weekday/hour averages, zone ranking and
+forecast comparisons. See [April results](docs/dss_april_evaluation.md) and
+[publication runbook](docs/dss_refit_publication_runbook.md).
+
+## Open an already prepared local demo
+
+With Docker Desktop running, the existing database loaded, and `.venv`/`.env`
+configured, run from the repository root:
+
+```powershell
+docker compose up -d postgres
+.\.venv\Scripts\python.exe -m streamlit run src/dashboard/app.py
+```
+
+Open the URL printed by Streamlit (normally <http://localhost:8501>). The
+development preview may instead be running at <http://127.0.0.1:8502>.
+Airflow and retraining are not required to view existing data and forecasts.
+Cloning the repository alone does not supply the database or model artifacts;
+use the setup/data-build steps below for a fresh environment.
+
 ## Objective
 
 Build a university-scale data warehouse from NYC TLC Yellow Taxi Trip Records
-for 2024 and, later, a decision support system that forecasts day-ahead pickup
+for 2024 and a decision support system that forecasts day-ahead pickup
 demand by date, hour, and taxi zone.
 
 The intended decision is where and when taxi availability should be prioritized.
 
-## Planned stack
+## Stack
 
 - Python
 - PostgreSQL
 - dbt Core
-- Apache Airflow
+- Apache Airflow (optional local orchestration)
 - Streamlit
 - scikit-learn
 - Docker Compose
@@ -70,7 +93,7 @@ NYC TLC data must not be committed to this repository.
 Prerequisites:
 
 - Docker with Docker Compose v2
-- Python 3.10 or later for project modules
+- Python 3.11 or later for project modules (local verification uses Python 3.11)
 
 Create a local environment file:
 
@@ -106,18 +129,30 @@ docker compose exec -T postgres psql -v ON_ERROR_STOP=1 `
 ```
 
 Apply `003_create_dss_tables.sql` the same way before publishing forecasts to
-an existing volume.
+an existing volume. If the DSS tables already exist, apply the idempotent
+actual-fit metadata migration before publishing refitted models:
 
-Run all unit and database integration tests while PostgreSQL is healthy:
+```powershell
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 `
+  -U nyc_taxi -d nyc_taxi_dw `
+  -f /docker-entrypoint-initdb.d/004_dss_actual_fit.sql
+```
+
+Keep the existing volume; migrations do not require deleting or recreating it.
+
+After the data-build steps below have created the warehouse/marts, run all
+unit and database integration tests while PostgreSQL is healthy:
 
 ```powershell
 $env:PYTHONPATH = (Resolve-Path "src").Path
 $env:RUN_DB_TESTS = "1"
+$env:RUN_ANALYTICS_TESTS = "1"
 .\.venv\Scripts\python.exe -m unittest discover -s tests -t . -v
 ```
 
-Without `RUN_DB_TESTS=1`, database integration tests are discovered and
-skipped; unit tests still run normally. Run discovery from the repository root
+`RUN_DB_TESTS=1` enables pipeline/DSS database tests; `RUN_ANALYTICS_TESTS=1`
+enables warehouse/analytics tests. Without these flags the corresponding tests
+are skipped; unit tests still run normally. Run discovery from the repository root
 with `-t .` so `tests/dss` does not shadow the `src/dss` package.
 
 Stop the service without deleting its named volume:
@@ -138,6 +173,12 @@ desired 2024 month range. See `docs/airflow_runbook.md` for task flow, audit
 semantics, tests, and recovery. The DAG stops after staging/audit; run the dbt
 warehouse and mart commands below to refresh analytics after a new month.
 DSS and dashboard services are not included in Compose.
+
+The DAG defaults to January–March. Choosing one month limits RAW ingestion,
+but staging/tests/audit still cover all loaded data. A matching successful
+source checksum skips RAW loading; it does not skip the staging rebuild.
+For a short presentation, prepare a completed DAG run and show its tasks/logs
+alongside the preloaded dashboard instead of waiting for a full rebuild live.
 
 ## January 2024 source profile
 
@@ -288,7 +329,8 @@ development, `dotenv` loads the Git-ignored `.env` before each command:
 .\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe debug --project-dir src/dbt --profiles-dir src/dbt
 .\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe seed --project-dir src/dbt --profiles-dir src/dbt
 .\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe run --project-dir src/dbt --profiles-dir src/dbt --select staging
-.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe test --project-dir src/dbt --profiles-dir src/dbt
+.\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe test --project-dir src/dbt --profiles-dir src/dbt --select staging source:raw taxi_zone_lookup --indirect-selection cautious
+.\.venv\Scripts\python.exe -m taxi_dw.staging_audit
 ```
 
 The seed creates `staging.taxi_zone_lookup`. The table
@@ -311,6 +353,7 @@ the full project:
 
 ```powershell
 .\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe run --project-dir src/dbt --profiles-dir src/dbt --select staging warehouse marts
+.\.venv\Scripts\python.exe -m taxi_dw.staging_audit
 .\.venv\Scripts\dotenv.exe -f .env run -- .\.venv\Scripts\dbt.exe test --project-dir src/dbt --profiles-dir src/dbt
 ```
 
@@ -324,7 +367,10 @@ staging and warehouse contracts.
 
 `fact_trip` contains exactly one row per valid staging trip and preserves the
 source key and lineage. It uses both pickup and drop-off roles for date, minute,
-and zone. Nullable source measures stay null. The mart groups valid pickups by
+and zone. Nullable source measures stay null. RAW money is `double precision`;
+staging validates before rounding to bounded two-decimal numeric values, and
+fact money columns explicitly use `numeric(12,2)`. Distance/duration stay
+`double precision`. The mart groups valid pickups by
 New York local date, hour, and taxi zone. It contains only combinations with at
 least one pickup; see `docs/gate_b_handoff.md` for the zero-demand policy and
 Person 3 handoff.
@@ -340,25 +386,48 @@ After PostgreSQL is running and the dbt warehouse/mart build above has passed,
 start the Overview and OLAP application from the repository root:
 
 ```powershell
-.\.venv\Scripts\streamlit.exe run src/dashboard/app.py
+.\.venv\Scripts\python.exe -m streamlit run src/dashboard/app.py
 ```
 
-Open the local URL printed by Streamlit. The sidebar filters pickup dates,
-borough, local pickup hours, and optional TLC taxi zones. Overview displays
-pickup-trip KPIs and daily/hourly/geographic charts. OLAP switches between
-month, day, day-hour, borough, and zone groupings; the filters implement
-slice/dice. SQL lives in `src/dashboard/analytics_repository.py`, not in the
-view. The app reads `mart.mart_zone_hour_demand` and
-`mart.mart_demand_coverage`; it does not read RAW.
+Open the local URL printed by Streamlit. The English dashboard has three views:
+
+- **Overview:** total valid pickups, average pickups per day, busiest hour,
+  daily/hourly/borough charts and a Top 10/20/30 zone selector.
+- **OLAP:** click month → day → hour or borough → zone, and use the back
+  control beside each chart to roll up. The weekday/hour heatmap follows the
+  current scope. Each cell averages that weekday's occurrences, including
+  zero-pickup days; weekdays outside the date range are unavailable, not zero.
+- **Forecast & priorities:** choose **Planning scope** (date, borough, shift
+  hours, optional zones and a 5/10/20-zone shortlist), then press **Apply**.
+  **Zones to review** appears first, followed by hourly/D−7 comparisons and
+  the optional zone/hour heatmap. Shortlist length changes the display, not
+  the forecast totals or the historical evaluation's fixed K.
+  Model details, priority rules and historical evaluation are collapsed.
+
+Overview/OLAP share **Pickup filters**. Choose dates, borough, hours and zones,
+then press **Apply filters**; draft edits do not rerun the queries. Leaving
+zones empty selects all zones in the borough. Historical hours include both
+endpoints (6–9 means 06:00–09:59). Forecast has a separate submitted form and excludes
+the end hour: [6,10) covers the same four hours. All hours use New York time.
+SQL lives in `src/dashboard/analytics_repository.py`. Analytics read the mart
+and coverage view; forecasts read persisted DSS runs, without training in the UI.
 
 The mart is sparse and January-April 2024 are currently loaded. An absent
 combination in a month listed by `mart.mart_demand_coverage` means zero
-**valid** pickups; an unlisted month has unavailable data. Use the refresh button after a dbt rebuild or wait
+**valid** pickups; an unlisted month has unavailable data. Use **Reload data** after a dbt rebuild or wait
 up to five minutes for the dashboard cache. Query definitions, four runnable
 OLAP examples, field meanings, and reconciliation guidance are in
-`docs/olap_analytics.md`. Choose **Dự báo & khuyến nghị** after a Gate C
+`docs/olap_analytics.md`. Choose **Forecast & priorities** after a Gate C
 forecast is published to compare prediction with baseline and review ranked,
-versioned recommendations.
+versioned recommendations. The 1–30 April 2024 forecasts are historical demos;
+April actuals are already known. Pickup ranking does not calculate the number
+of taxis to dispatch or unmet demand.
+
+Local `.env.example` uses `POSTGRES_HOST=127.0.0.1` to avoid slow localhost
+fallback on this Windows setup. Restart Streamlit after changing `.env`.
+Initial coverage verification may take longer because it reconciles the fact
+table; subsequent interactions use cached data. Do not rebuild the warehouse
+just to refresh a chart.
 
 Validate the analytics repository against the rebuilt local mart with:
 
@@ -379,11 +448,11 @@ Q1 mart current. From the repository root:
 
 ```powershell
 $env:PYTHONPATH = (Resolve-Path "src").Path
-python -m dss.pipeline train --config configs/dss_q1.toml
-python -m dss.pipeline evaluate `
+.\.venv\Scripts\python.exe -m dss.pipeline train --config configs/dss_q1.toml
+.\.venv\Scripts\python.exe -m dss.pipeline evaluate `
   --config configs/dss_q1.toml `
   --artifact artifacts/models/<artifact-from-train>.joblib
-python -m dss.pipeline forecast `
+.\.venv\Scripts\python.exe -m dss.pipeline forecast `
   --artifact artifacts/models/<artifact-from-train>.joblib `
   --date 2024-04-01
 ```
@@ -391,7 +460,9 @@ python -m dss.pipeline forecast `
 Training compares Poisson gradient boosting and Random Forest with seasonal-naive
 and same-weekday-median baselines on validation only. Evaluation opens the test
 split after selection and requires the same split boundaries saved in the artifact.
-Forecast dates must be strictly after the artifact's validation end, since
+The Q1 March test period has already been explored; rerunning it is retrospective,
+not a fresh holdout. Forecast dates must be strictly after both actual fit end
+and the artifact's validation end, since
 validation was used to select the approach. Complete history through D−1
 (including train/validation dates) remains valid input for lag/rolling features.
 Forecasting requires complete Gate B coverage for the preceding 28 days and
@@ -402,13 +473,15 @@ seasonal naive is selected and the ratio equals 1. See
 `docs/dss_design.md` and `docs/gate_c_handoff.md` for contracts, limitations,
 and the complete runbook.
 
-### Fixed Q1 refit and April holdout (offline)
+### Fixed Q1 refit, April evaluation and publication
 
 The validation-selected RF can be refitted on all January 29–March 31 rows
 without rerunning selection. Selection boundaries remain immutable; the new
 artifact separately records its actual fit window. March is then fit data,
 and evaluation uses April 1–30 with actual history only through each D−1.
-Refit artifacts cannot be published with the old Gate C schema.
+The current schema supports separate selection/actual-fit metadata after
+migration `004_dss_actual_fit.sql`. Artifacts remain local and immutable;
+publication writes new forecast runs without overwriting older runs.
 
 ```powershell
 $env:PYTHONPATH = (Resolve-Path 'src').Path
@@ -417,7 +490,19 @@ $env:OMP_NUM_THREADS = '2'
 .\.venv\Scripts\python.exe scripts/evaluate_dss_april.py evaluate --artifact artifacts/models/<refit-directory>/model.joblib
 ```
 
-Use the saved artifact to repeat evaluation without fitting again. See
+These experiment commands require the parent artifact documented in
+`docs/dss_april_protocol.md`; artifacts/manifest files are not included in Git.
+Use trusted local artifacts or a separately supplied artifact/manifest bundle.
+Use the saved artifact to repeat evaluation without fitting again. To publish
+an existing refit after migration:
+
+```powershell
+.\.venv\Scripts\python.exe -m dss.pipeline forecast `
+  --artifact artifacts/models/<refit-directory>/model.joblib `
+  --date 2024-04-01
+```
+
+See the [publication and verification runbook](docs/dss_refit_publication_runbook.md),
 [the frozen protocol](docs/dss_april_protocol.md) and
 [the April report](docs/dss_april_evaluation.md) for exact paths, data build
 commands, regression metrics, paired ranking evaluation, and limitations.

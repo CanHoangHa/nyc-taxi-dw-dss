@@ -115,7 +115,8 @@ trip total, and the same content fingerprint.
 On 4 October 2026, all nine models were rebuilt again with the same fact and
 mart row counts, and the full 88-test dbt suite passed. The Person 2 Overview
 and OLAP application also reads this mart; its definitions and SQL examples
-are in `docs/olap_analytics.md`. Person 3 consumer signoff is still pending.
+are in `docs/olap_analytics.md`. Person 3 consumer signoff was completed on
+9 October 2026, as recorded in the status above.
 After an explicit `numeric(12,2)` cast was added to fact monetary columns,
 `fact_trip` and the mart were rebuilt with the same counts; all 38 selected
 fact/mart tests, including the new physical-type test, passed.

@@ -1,5 +1,88 @@
 # Warehouse OLAP and analytics view
 
+## Interactive dashboard (30 October 2026)
+
+All dashboard labels, axes, tooltips and presentation text are in English.
+Time and geography back buttons sit beside their respective chart headings.
+Forecast ranking shows rank, zone and forecast/D−7 totals; repeated rule text
+and the same hour count on every row are omitted. Predictions display one decimal.
+Hourly details, priority rules, model metadata and historical evaluation are
+available in collapsed sections. Model/run identifiers remain available for
+audit but no longer appear as a block of technical text above the main chart.
+Persisted forecasts, recommendations and explanations are unchanged in the DB.
+No pie chart was added: bar charts preserve direct comparisons between zones.
+
+The **Average pickups by weekday and hour** heatmap follows the current OLAP exploration
+scope, including applied dates, borough/zones, hours and subsequent drill-down.
+It queries at most 168 weekday/hour totals and divides each by the number of
+calendar occurrences of that weekday, including zero-pickup dates. Weekdays
+outside the date interval have no denominator and are grey, not zero. Hover
+shows the average and the number of **Matching dates**. For example, 500 pickups
+at 18:00 across five Fridays means an average of 100 in the Friday/18 cell.
+An average describes a historical pattern; it does not show variability or
+guarantee the same count next Friday. No warehouse rebuild is required.
+
+Forecast starts with a submitted **Planning scope** form and **Zones to review**.
+Choose date, borough, half-open shift interval, optional zones and a shortlist
+length (5/10/20), then press **Apply**. Invalid scope edits retain the previous
+selection. Zones are ordered by forecast pickup volume; fleet availability
+still has to be considered by the person planning service.
+
+The supporting **Top zones: forecast vs. last week** chart uses both series
+on the same prediction-selected shortlist. The collapsed **Hourly pattern by zone** heatmap
+uses these same zones and hours, ordered by total prediction. Scope KPIs still
+describe all filtered zones; shortlist size limits the table and zone charts.
+Its values are
+hourly forecasts, not historical averages. A one-hour selection uses only the
+comparison chart. These views do not change ranking rules, model selection or
+the fixed historical ranking evaluation policy.
+
+Overview and OLAP use a submitted filter form. Edit dates, pickup borough,
+inclusive pickup hours (6–9 includes 6, 7, 8, 9), and optional taxi zones, then
+press **Apply filters**. Until submission, charts retain the applied selection;
+a caption displays that selection. Empty zone selection means all zones inside
+the chosen borough. Zone options include all boroughs so all fields can be
+submitted together; an incompatible borough/zone choice is rejected rather
+than silently producing zero. Invalid dates retain the previous applied scope.
+Forecast/DSS has its own submitted planning form, separate from historical filters.
+
+OLAP opens with monthly and borough bar charts. Click a bar (or use the labelled
+select-and-drill controls) to drill month → day → hour or borough → taxi zone.
+Both charts share the drilled scope; back buttons roll up one hierarchy at a
+time, and **Reset exploration** resets both to the submitted filters. New applied
+filters reset drill navigation. Time buckets with no valid pickups are shown
+as zero only within reconciled coverage. Geography charts show the top 20
+zones when necessary; the dropdown retains all zones with pickups. The total
+above the charts always covers the entire scope, not only the displayed top 20.
+The optional detail-table switch queries the combined time/geography grain and
+offers CSV export, with the existing 5,000-group truncation warning.
+
+Horizontal charts always show every category label, with 30 pixels per row.
+Exact pickup totals appear beside the bars, so low-volume boroughs remain
+readable on the shared zero-based linear scale even when Manhattan dominates.
+Overview offers a 10 / 20 / 30 zone selector; this only changes the descriptive
+chart length and does not modify the DSS evaluation's fixed K.
+
+Overview KPIs are valid pickup count, average pickups per **calendar day** in
+the selected interval (including zero-pickup days), and busiest pickup hour
+aggregated across those days. Tied busiest hours use the earliest hour. These
+replace the previous active-zone/active-day counts, which added little context
+when selecting a single zone.
+
+Reference loading now checks coverage once instead of twice and reuses the
+same database connection for reference queries. Coverage still performs the
+original audit/fact/mart reconciliation; no checks were weakened. Data caches
+last five minutes. **Reload data** explicitly clears caches after a pipeline
+update; it is separate from filter submission. The local `.env.example` uses
+`127.0.0.1`: on this Windows machine, `localhost` incurred about five seconds
+per connection versus about 0.02 seconds over IPv4. Restart an already-running
+Streamlit process after changing `.env` because loaded environment variables
+take precedence. Docker services continue to connect to `postgres` internally.
+
+Local measured overview fetch: approximately 0.74 seconds uncached and 0.001
+seconds cached. Initial reference/coverage load was about 13 seconds; this
+remains dependent on database load and is not a performance guarantee.
+
 ## Metric and coverage
 
 Every query below reads `mart.mart_zone_hour_demand`, whose row grain is an
@@ -22,7 +105,7 @@ a complete total when no rows were truncated.
 ## Runnable OLAP examples
 
 Run these statements with `psql` against the project database. The January
-examples use the first loaded source month; January-March are now available.
+examples use the first loaded source month; January-April are now available.
 Change the literal date bounds for another period. All examples query the
 mart, never RAW.
 
@@ -104,10 +187,10 @@ of `trip_count`.
 | `zone_name` | `text` | Lookup zone label |
 | `trip_count` | `bigint` | Number of valid pickup trips in the row |
 
-The Overview KPI `Chuyến đón hợp lệ` is `sum(trip_count)` under the active
-filters; `Vùng có chuyến đón` is the number of distinct TLC pickup zone IDs
-with a row under those filters; `Ngày có chuyến đón` is the number of distinct
-pickup dates with a row. The daily, hourly, borough, and top-zone charts all
+The Overview KPI `Valid pickups` is `sum(trip_count)` under the applied
+filters. `Average pickups / day` divides that sum by the inclusive calendar
+day count. `Busiest pickup hour` is the hour with the largest aggregated pickup
+count in that same scope. The daily, hourly, borough, and top-zone charts all
 use the same pickup-trip measure and filters. The top-zone chart is ranked by
 count, including zones 264/265 if they enter the top ten.
 

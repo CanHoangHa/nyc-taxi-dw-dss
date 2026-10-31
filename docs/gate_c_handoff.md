@@ -1,9 +1,14 @@
 # Gate C handoff — DSS forecast and recommendation output
 
-Status: Person 3 implementation complete. PostgreSQL schema and transactional
-persistence were validated against PostgreSQL 16.15 on 9 October 2026. Q1
-model training remains pending on this local volume because it contains no RAW,
-warehouse, or mart data.
+Current status (30 October 2026): Q1 model selection, fixed RF refit through
+31 March, April evaluation and historical 1 April publication are complete.
+January-April data are loaded locally. Migration `004_dss_actual_fit.sql`
+separately records actual fit and original selection windows. See
+[publication runbook](dss_refit_publication_runbook.md) and
+[April evaluation](dss_april_evaluation.md) for current evidence and commands.
+
+The original schema/persistence verification below was performed on PostgreSQL
+16.15 on 9 October 2026; its test counts describe that earlier milestone.
 
 ## Published tables
 
@@ -65,7 +70,8 @@ Start Streamlit as before and choose **Dự báo & khuyến nghị**. The view s
 - Total predicted pickups and count of High zone-hours.
 - Model, feature, and recommendation versions.
 - Prediction versus historical baseline by hour.
-- Ranked recommendation rows with the rule explanation.
+- Ranked zones, top-zone comparisons and an optional zone/hour heatmap.
+- Collapsed hourly details, priority rules and model provenance.
 - Date, borough, and local-hour filters.
 
 No model is fit inside Streamlit. The UI remains a read-only consumer of Gate
@@ -80,7 +86,8 @@ naive can indicate stable High demand with ratio 1; growth from a low base is
 not sufficient for High. Zero predictions remain Low even with zero quantiles.
 Existing saved runs retain their original policy version and values.
 
-Forecast dates must be after the artifact's validation end. Evaluation rejects
+Forecast dates must be after both the artifact's validation end and actual fit
+end (when refitted). Evaluation rejects
 configs whose split differs from the artifact's saved experiment boundaries.
 Historical train/validation observations remain valid lag/rolling inputs.
 
@@ -98,7 +105,8 @@ read them through `ForecastRepository`, and used an outer rollback to verify
 that no test run remained. The initialized database exposed both Gate C tables
 and their constraints.
 
-The checked-in Q1 config is for pipeline verification. Do not present its
-metrics as the final 2024 result. Load and reconcile all twelve months, lock
-the full-year split and validation selection rule, then run the untouched test
-period for the final report.
+The checked-in Q1 config preserves the original selection experiment. March
+test results have already been examined and are retrospective. The fixed-model
+April evaluation is the current new-month evidence; it is not a full-year
+claim. Further data and a newly frozen evaluation protocol are needed before
+making broader seasonal/generalization claims. See `docs/dss_april_protocol.md`.

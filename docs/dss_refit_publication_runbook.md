@@ -59,6 +59,22 @@ Get-FileHash -Algorithm SHA256 $rfArtifact
 .\.venv\Scripts\python.exe -m dss.pipeline forecast --artifact $rfArtifact --date 2024-04-01
 ```
 
+Local demo đã mở rộng tới đủ ngày 01–30/04/2024. Mỗi ngày dùng cùng RF
+refit và lịch sử thực tế đến D−1; không train lại. Để tái tạo cả tháng trên
+database đã có đủ mart tháng 3–4, dùng CLI ở trên cho từng ngày:
+
+```powershell
+1..30 | ForEach-Object {
+    $forecastDay = '2024-04-{0:00}' -f $_
+    .\.venv\Scripts\python.exe -m dss.pipeline forecast --artifact $rfArtifact --date $forecastDay
+    if ($LASTEXITCODE -ne 0) { throw "Publication failed: $forecastDay" }
+}
+```
+
+Run cùng artifact/ngày và nội dung được tái sử dụng; run cũ được giữ nguyên.
+Đây là demo lịch sử, không phải dự báo thực hiện trước khi tháng 4 xảy ra.
+Chọn **Reload forecasts** trên dashboard để tải danh sách ngày mới.
+
 SHA256 phải là
 `aa5c658291adb69ee3fa815681a9c4707b45cc605f08a9750c98ea92ea5f84ed`.
 CLI đối chiếu checksum với manifest, metadata selection và metadata RF actual
