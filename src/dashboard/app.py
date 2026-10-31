@@ -6,7 +6,7 @@ Run from the repository root with:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 import sys
 from pathlib import Path
 
@@ -21,28 +21,20 @@ from dashboard.analytics_repository import AnalyticsRepository  # noqa: E402
 from dss.service import DssService  # noqa: E402
 from dss.ranking import rank_zone_interval  # noqa: E402
 from dss.contracts import ContractError  # noqa: E402
+from dashboard.analytics_controls import analytics_filters, filter_caption  # noqa: E402
+from dashboard.olap_view import pickup_chart, show_olap_explorer  # noqa: E402
+from dashboard.pattern_charts import show_forecast_patterns  # noqa: E402
+from dashboard.forecast_controls import planning_scope  # noqa: E402
 from taxi_dw.config import ConfigurationError  # noqa: E402
 from taxi_dw.db import open_connection  # noqa: E402
 
 
-TIME_LABELS = {
-    "Tất cả ngày": "all",
-    "Theo tháng": "month",
-    "Theo ngày": "day",
-    "Theo giờ trong ngày": "hour",
-    "Ngày và giờ": "day_hour",
-}
-GEO_LABELS = {
-    "Tất cả vùng": "all",
-    "Theo borough": "borough",
-    "Theo taxi zone": "zone",
-}
 APPROACH_LABELS = {
     "random_forest": "Random Forest",
     "hist_gradient_boosting_poisson": "Poisson gradient boosting",
     "model": "Poisson gradient boosting",
     "seasonal_naive": "Seasonal naive (D−7)",
-    "same_weekday_median": "Median 4 tuần cùng thứ",
+    "same_weekday_median": "Same-weekday median",
 }
 
 
@@ -50,21 +42,14 @@ APPROACH_LABELS = {
 def reference_data():
     with open_connection() as connection:
         repository = AnalyticsRepository(connection)
+        months = repository.available_months()
+        bounds = (months[0], (pd.Timestamp(months[-1]) + pd.offsets.MonthEnd(0)).date()) if months else (None, None)
         return (
-            repository.date_bounds(),
-            repository.available_months(),
+            bounds,
+            months,
             repository.boroughs(),
             repository.zones(),
         )
-
-
-def months_between(start_date: date, end_date: date) -> list[date]:
-    months = []
-    year, month = start_date.year, start_date.month
-    while (year, month) <= (end_date.year, end_date.month):
-        months.append(date(year, month, 1))
-        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    return months
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -81,7 +66,7 @@ def overview_data(start_date, end_date, borough, hour_range, zone_ids):
             repository.olap(start_date, end_date, time_level="day", geo_level="all", **filters)[0],
             repository.olap(start_date, end_date, time_level="hour", geo_level="all", **filters)[0],
             repository.olap(start_date, end_date, time_level="all", geo_level="borough", **filters)[0],
-            repository.olap(start_date, end_date, time_level="all", geo_level="zone", limit=10, **filters)[0],
+            repository.olap(start_date, end_date, time_level="all", geo_level="zone", limit=30, **filters)[0],
         )
 
 
@@ -105,67 +90,46 @@ def show_overview(filters):
         start_date, end_date, borough, hour_range, zone_ids
     )
     columns = st.columns(3)
-    columns[0].metric("Chuyến đón hợp lệ", f"{metrics['trip_count']:,}")
-    columns[1].metric("Vùng có chuyến đón", f"{metrics['active_zones']:,}")
-    columns[2].metric("Ngày có chuyến đón", f"{metrics['active_days']:,}")
+    columns[0].metric("Valid pickups", f"{metrics['trip_count']:,}")
+    calendar_days = (end_date - start_date).days + 1
+    columns[1].metric("Average pickups / day", f"{metrics['trip_count'] / calendar_days:,.1f}",
+                      help="Total pickups divided by the number of selected dates, including days with no pickups.")
+    peak = max(hourly, key=lambda row: row['trip_count']) if hourly and metrics['trip_count'] else None
+    columns[2].metric("Busiest pickup hour", f"{int(peak['demand_hour']):02d}:00" if peak else "—",
+                      help="Hour with the most pickups across the selected dates. Ties use the earliest hour. New York time.")
 
     if not metrics["trip_count"]:
-        st.info("Không có chuyến đón hợp lệ trong bộ lọc này.")
+        st.info("No valid pickups match these filters.")
         return
 
-    st.subheader("Nhu cầu đón theo ngày")
-    st.line_chart(pd.DataFrame(daily), x="demand_date", y="trip_count")
+    st.subheader("Daily pickups")
+    day_frame = pd.DataFrame(daily)
+    day_frame["demand_date"] = pd.to_datetime(day_frame.demand_date)
+    day_frame = day_frame.set_index("demand_date").reindex(pd.date_range(start_date, end_date), fill_value=0).rename_axis("demand_date").reset_index()
+    st.altair_chart(alt.Chart(day_frame).mark_line(color="#66c2ff").encode(
+        x=alt.X("demand_date:T", title="Pickup date", axis=alt.Axis(format="%d/%m")),
+        y=alt.Y("trip_count:Q", title="Valid pickups"),
+        tooltip=[alt.Tooltip("demand_date:T", title="Date", format="%d/%m/%Y"),
+                 alt.Tooltip("trip_count:Q", title="Valid pickups", format=",")],
+    ).properties(height=300), width="stretch")
     left, right = st.columns(2)
     with left:
-        st.subheader("Theo giờ địa phương New York")
-        st.bar_chart(pd.DataFrame(hourly), x="demand_hour", y="trip_count")
+        st.subheader("Pickups by hour")
+        hourly_frame = pd.DataFrame(hourly).set_index("demand_hour").reindex(range(hour_range[0],hour_range[1]+1),fill_value=0).reset_index()
+        hourly_frame["Hour"] = hourly_frame.demand_hour.map(lambda hour: f"{hour:02d}:00")
+        st.altair_chart(pickup_chart(hourly_frame,"Hour","Hour (New York)"),width="stretch")
     with right:
-        st.subheader("Theo borough")
-        st.bar_chart(pd.DataFrame(by_borough), x="borough", y="trip_count")
-    st.subheader("10 taxi zone có nhiều chuyến đón nhất")
-    zone_frame = pd.DataFrame(top_zones)
+        st.subheader("Pickups by borough")
+        st.altair_chart(pickup_chart(pd.DataFrame(by_borough),"borough","Borough",horizontal=True),width="stretch")
+    zone_heading, zone_limit = st.columns([5, 1])
+    zone_heading.subheader("Top pickup zones")
+    top_n = zone_limit.selectbox("Zones to display", [10, 20, 30],
+        format_func=lambda count: f"Top {count}", key="overview_top_n", label_visibility="collapsed")
+    zone_frame = pd.DataFrame(top_zones[:top_n])
     zone_frame["taxi_zone"] = (
         zone_frame["zone_name"] + " (#" + zone_frame["pickup_location_id"].astype(str) + ")"
     )
-    st.bar_chart(zone_frame, x="taxi_zone", y="trip_count", horizontal=True)
-
-
-def show_olap(filters):
-    start_date, end_date, borough, hour_range, zone_ids = filters
-    st.write(
-        "Đổi cấp thời gian hoặc địa lý để roll-up/drill-down. Bộ lọc ngày, "
-        "borough, giờ và taxi zone ở thanh bên dùng cho slice/dice."
-    )
-    left, right = st.columns(2)
-    with left:
-        time_label = st.selectbox("Cấp thời gian", list(TIME_LABELS), index=2)
-    with right:
-        geo_label = st.selectbox("Cấp địa lý", list(GEO_LABELS), index=1)
-    rows, truncated = olap(
-        start_date,
-        end_date,
-        TIME_LABELS[time_label],
-        GEO_LABELS[geo_label],
-        borough,
-        hour_range,
-        zone_ids,
-        5000,
-    )
-    if truncated:
-        st.warning("Chỉ hiển thị 5.000 nhóm đầu. Hãy thu hẹp bộ lọc để xem đủ kết quả.")
-    if not rows or (len(rows) == 1 and rows[0]["trip_count"] == 0):
-        st.info("Không có chuyến đón hợp lệ trong bộ lọc này.")
-        return
-    frame = pd.DataFrame(rows)
-    st.dataframe(frame, width="stretch", hide_index=True)
-    st.download_button(
-        "Tải bảng đang hiển thị (CSV)",
-        data=frame.to_csv(index=False).encode("utf-8-sig"),
-        file_name="nyc_taxi_olap.csv",
-        mime="text/csv",
-    )
-    if not truncated:
-        st.caption(f"Tổng các nhóm đang hiển thị: {frame['trip_count'].sum():,} chuyến.")
+    st.altair_chart(pickup_chart(zone_frame,"taxi_zone","Taxi zone",horizontal=True),width="stretch")
 
 
 def dss_forecasts(forecast_date):
@@ -180,53 +144,21 @@ def show_dss():
     service = DssService()
     dates = service.available_forecast_dates()
     if not dates:
-        st.info(
-            "Chưa có forecast Gate C. Hãy chạy DSS train/forecast và migration "
-            "sql/003_create_dss_tables.sql trước."
-        )
+        st.info("No forecasts available. Publish a forecast before opening this view.")
         return
-    with st.sidebar:
-        st.header("Bộ lọc dự báo")
-        forecast_date = st.selectbox(
-            "Ngày dự báo", dates, format_func=lambda value: value.strftime("%d/%m/%Y")
-        )
-    run, rows, metrics, zone_reference = dss_forecasts(forecast_date)
+    initial_date = st.session_state.get("planning_applied", (dates[0],))[0]
+    if initial_date not in dates:
+        initial_date = dates[0]
+    run, rows, metrics, zone_reference = dss_forecasts(initial_date)
     if run is None or rows.empty:
-        st.info("Không có forecast hoàn chỉnh cho ngày đã chọn.")
+        st.info("No complete forecast is available for this date.")
         return
-
-    operational_zones = zone_reference.loc[zone_reference["is_actionable"]]
-    boroughs = sorted(operational_zones["borough"].dropna().unique().tolist())
-    with st.sidebar:
-        borough_label = st.selectbox("Borough dự báo", boroughs,
-                                     index=boroughs.index("Manhattan") if "Manhattan" in boroughs else 0)
-        forecast_hours = st.slider(
-            "Khoảng giờ dự báo [bắt đầu, kết thúc)", min_value=0, max_value=24, value=(6, 10)
-        )
-        st.caption("[8,9) xem một giờ; [6,10) gồm giờ 6, 7, 8, 9 (giờ New York).")
-        available_zones = operational_zones
-        if borough_label != "Tất cả":
-            available_zones = operational_zones.loc[operational_zones["borough"].eq(borough_label)]
-        zone_options = {
-            f"{row.borough} · {row.zone_name} (#{row.pickup_location_id})": int(
-                row.pickup_location_id
-            )
-            for row in available_zones[
-                ["borough", "zone_name", "pickup_location_id"]
-            ]
-            .drop_duplicates()
-            .sort_values(["borough", "zone_name"])
-            .itertuples(index=False)
-        }
-        chosen_zones = st.multiselect(
-            "Taxi zone (tùy chọn)",
-            list(zone_options),
-            key=f"dss_zone_filter_{borough_label}",
-        )
-        zone_ids = tuple(zone_options[label] for label in chosen_zones)
-        if st.button("Làm mới dữ liệu", key="refresh_dss"):
-            st.cache_data.clear()
-            st.rerun()
+    forecast_date, borough_label, forecast_hours, zone_ids, review_limit = planning_scope(dates, zone_reference)
+    if forecast_date != initial_date:
+        run, rows, metrics, zone_reference = dss_forecasts(forecast_date)
+        if run is None or rows.empty:
+            st.info("No complete forecast is available for this date.")
+            return
 
     try:
         ranking = rank_zone_interval(
@@ -238,54 +170,57 @@ def show_dss():
         return
     mask = rows["demand_hour"].ge(forecast_hours[0]) & rows["demand_hour"].lt(forecast_hours[1])
     mask &= rows["is_actionable"] & rows["pickup_location_id"].between(1, 263)
-    if borough_label != "Tất cả":
+    if borough_label != "All":
         mask &= rows["borough"].eq(borough_label)
     if zone_ids:
         mask &= rows["pickup_location_id"].isin(zone_ids)
     filtered = rows.loc[mask].copy()
     if filtered.empty:
-        st.info("Không có forecast trong bộ lọc đã chọn.")
+        st.info("No forecast matches these filters.")
         return
 
     high_count = int(filtered["demand_level"].eq("High").sum())
     columns = st.columns(3)
     columns[0].metric(
-        "Tổng pickup dự báo", f"{filtered['predicted_trip_count'].sum():,.1f}"
+        "Forecast pickups", f"{filtered['predicted_trip_count'].sum():,.1f}"
     )
-    columns[1].metric("Zone-hour mức High", f"{high_count:,}")
+    columns[1].metric("High-demand zone-hours", f"{high_count:,}",
+                      help="Zone-hour pairs forecast at or above their own historical p75; not a count of distinct zones.")
     model_name = str(run["model_name"])
     columns[2].metric(
-        "Phương pháp được chọn", APPROACH_LABELS.get(model_name, model_name)
-    )
-    st.caption(
-        f"Model {run['model_version']} · feature {run['feature_version']} · "
-        f"recommendation {run['recommendation_version']}"
+        "Forecast method", APPROACH_LABELS.get(model_name, model_name)
     )
     is_refit = run.get("fit_kind", "selection") == "refit"
     def show_date(value):
-        return pd.Timestamp(value).strftime("%d/%m/%Y") if value is not None else "chưa ghi nhận"
+        return pd.Timestamp(value).strftime("%d/%m/%Y") if value is not None else "Not recorded"
     fit_start = run.get("fit_start_date") or run.get("train_start_date")
     fit_end = run.get("fit_end_date") or run.get("train_end_date")
     fit_seconds = run.get("fit_seconds")
-    duration = f"{fit_seconds:.2f} giây" if fit_seconds is not None else "chưa ghi nhận"
-    st.caption(
-        f"{'RF đã refit' if is_refit else 'Model chưa refit'} · Fit dữ liệu thực tế: "
-        f"{show_date(fit_start)}–{show_date(fit_end)} · Thời gian fit: {duration}."
-    )
-    st.caption(
-        f"Selection: train {show_date(run.get('train_start_date'))}–{show_date(run.get('train_end_date'))}; "
-        f"validation {show_date(run.get('validation_start_date'))}–{show_date(run.get('validation_end_date'))}."
-    )
-    st.caption(f"Run {run['run_id']} · Chọn run mới nhất cho ngày này theo created_at, rồi run_id.")
-    if is_refit and forecast_date == date(2024, 4, 1):
-        st.info("01/04/2024 là demo lịch sử: actual đã có. Forecast chỉ dùng lịch sử đến 31/03 (D−1).")
+    duration = f"{fit_seconds:.2f} seconds" if fit_seconds is not None else "Not recorded"
+    st.caption(f"{forecast_date:%d %b %Y} · {borough_label} · "
+               f"{forecast_hours[0]:02d}:00–{forecast_hours[1]:02d}:00 (end excluded)")
+    if is_refit and date(2024, 4, 1) <= forecast_date <= date(2024, 4, 30):
+        st.info(f"Historical demo: forecasts use history through {forecast_date - timedelta(days=1):%d %b %Y}; "
+                "April actuals are already available.")
     if model_name in {"seasonal_naive", "same_weekday_median"}:
         st.info(
-            "Baseline này được chọn vì có WAPE validation thấp nhất; hệ thống không "
-            "ép mô hình học máy thắng khi số liệu chưa chứng minh điều đó."
+            "The baseline had the lowest validation WAPE and was selected for this run."
         )
 
-    st.subheader("Dự báo so với seasonal-naive D−7 theo giờ")
+    st.subheader("Zones to review")
+    st.caption("Areas ranked by forecast pickup volume. Combine with fleet availability when planning service.")
+    st.caption(f"Showing {min(review_limit, len(ranking))} of {len(ranking)} zones in the applied scope.")
+    if not ranking.empty:
+        st.dataframe(
+            ranking.head(review_limit)[["rank", "pickup_location_id", "zone_name", "predicted_trip_count",
+                     "baseline_trip_count"]],
+            hide_index=True, width="stretch",
+            column_config={"rank": "Rank", "pickup_location_id": "Zone ID", "zone_name": "Taxi zone",
+                           "predicted_trip_count": st.column_config.NumberColumn("Forecast pickups", format="%.1f"),
+                           "baseline_trip_count": st.column_config.NumberColumn("Last week (D−7)", format="%.0f")},
+        )
+
+    st.subheader("Hourly forecast vs. last week")
     hourly = filtered.groupby("demand_hour", as_index=False)[
         ["predicted_trip_count", "baseline_trip_count"]
     ].sum()
@@ -296,8 +231,8 @@ def show_dss():
     )
     hourly["series"] = hourly["series"].map(
         {
-            "predicted_trip_count": "Dự báo được chọn",
-            "baseline_trip_count": "Baseline D−7",
+            "predicted_trip_count": "Forecast",
+            "baseline_trip_count": "Last week (D−7)",
         }
     )
     chart = (
@@ -306,20 +241,20 @@ def show_dss():
         .encode(
             x=alt.X(
                 "demand_hour:O",
-                title="Giờ địa phương New York",
+                title="Hour (New York)",
                 sort=list(range(24)),
                 axis=alt.Axis(labelAngle=0),
             ),
             y=alt.Y(
                 "trip_count:Q",
-                title="Số pickup dự báo",
+                title="Pickups",
                 scale=alt.Scale(zero=True),
             ),
             color=alt.Color("series:N", title=None),
             strokeDash=alt.StrokeDash("series:N", title=None),
             tooltip=[
-                alt.Tooltip("demand_hour:O", title="Giờ"),
-                alt.Tooltip("series:N", title="Chuỗi"),
+                alt.Tooltip("demand_hour:O", title="Hour"),
+                alt.Tooltip("series:N", title="Series"),
                 alt.Tooltip("trip_count:Q", title="Pickup", format=",.1f"),
             ],
         )
@@ -327,22 +262,8 @@ def show_dss():
     )
     st.altair_chart(chart, width="stretch")
 
-    st.subheader("Xếp hạng zone theo tổng pickup dự báo")
-    st.caption(
-        "Hạng theo tổng dự báo trong khoảng giờ; đồng tổng cùng hạng. "
-        "Zone ID chỉ ổn định thứ tự hiển thị. Đây là nhận diện nơi có pickup, "
-        "không phải tối ưu điều phối, thiếu hụt xe hay số taxi cần điều tới."
-    )
-    if not ranking.empty:
-        st.dataframe(
-            ranking[["rank", "pickup_location_id", "zone_name", "predicted_trip_count",
-                     "baseline_trip_count", "hour_count", "ranking_reason"]],
-            hide_index=True, width="stretch",
-            column_config={"rank": "Hạng", "pickup_location_id": "Zone ID", "zone_name": "Taxi zone",
-                           "predicted_trip_count": "Tổng pickup dự báo", "baseline_trip_count": "Tổng D−7",
-                           "hour_count": "Số giờ", "ranking_reason": "Giải thích"},
-        )
-    st.subheader("Chi tiết từng giờ và nhãn nhu cầu")
+    show_forecast_patterns(ranking, filtered, forecast_hours[0], forecast_hours[1], k=review_limit)
+
     display_columns = [
         "demand_hour",
         "borough",
@@ -352,30 +273,33 @@ def show_dss():
         "baseline_trip_count",
         "demand_ratio",
         "demand_level",
-        "recommendation",
-        "recommendation_reason",
     ]
-    st.dataframe(
-        filtered.loc[:, display_columns],
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "demand_hour": st.column_config.NumberColumn("Giờ", format="%d"),
-            "borough": "Borough",
-            "pickup_location_id": st.column_config.NumberColumn(
-                "Zone ID", format="%d"
-            ),
-            "zone_name": "Taxi zone",
-            "predicted_trip_count": st.column_config.NumberColumn("Dự báo", format="%.1f"),
-            "baseline_trip_count": st.column_config.NumberColumn("D−7", format="%.1f"),
-            "demand_ratio": st.column_config.NumberColumn("Tỷ lệ", format="%.2f"),
-            "demand_level": "Mức nhu cầu",
-            "recommendation": st.column_config.TextColumn("Khuyến nghị", width="large"),
-            "recommendation_reason": st.column_config.TextColumn(
-                "Lý do", width="large"
-            ),
-        },
-    )
+    with st.expander("Hourly details"):
+        st.dataframe(
+            filtered.loc[:, display_columns], width="stretch", hide_index=True,
+            column_config={
+                "demand_hour": st.column_config.NumberColumn("Hour", format="%d"),
+                "borough": "Borough", "pickup_location_id": "Zone ID", "zone_name": "Taxi zone",
+                "predicted_trip_count": st.column_config.NumberColumn("Forecast", format="%.1f"),
+                "baseline_trip_count": st.column_config.NumberColumn("D−7", format="%.0f"),
+                "demand_ratio": st.column_config.NumberColumn("vs. last week", format="%.2f"),
+                "demand_level": "Demand level",
+            },
+        )
+    with st.expander("How priorities work"):
+        st.write("Zones are ranked by forecast pickups, with equal totals sharing a rank. "
+                 "This identifies pickup concentration, not the number of taxis to dispatch.")
+        st.write("Hourly demand levels compare each zone-hour against its own training history: "
+                 "High ≥ p75; Medium ≥ p50 and below p75; Low otherwise. Zero forecasts are Low. "
+                 "These levels do not determine the zone ranking.")
+    with st.expander("Model details"):
+        st.caption(f"{'Refitted model' if is_refit else 'Original model'} · "
+                   f"Fit data: {show_date(fit_start)}–{show_date(fit_end)} · Fit time: {duration}.")
+        st.caption(f"Selection train: {show_date(run.get('train_start_date'))}–{show_date(run.get('train_end_date'))}; "
+                   f"validation: {show_date(run.get('validation_start_date'))}–{show_date(run.get('validation_end_date'))}.")
+        st.caption(f"Model {run['model_version']} · Features {run['feature_version']} · "
+                   f"Recommendation policy {run['recommendation_version']}")
+        st.caption(f"Run ID: {run['run_id']}")
 
     validation = metrics.get("selection_validation", metrics.get("validation", {})) if isinstance(metrics, dict) else {}
     if isinstance(validation, dict) and validation:
@@ -385,8 +309,8 @@ def show_dss():
                 continue
             metric_rows.append(
                 {
-                    "Phương pháp": APPROACH_LABELS.get(approach, approach),
-                    "Được chọn": approach == model_name
+                    "Method": APPROACH_LABELS.get(approach, approach),
+                    "Selected": approach == model_name
                     or (
                         approach == "model"
                         and model_name == "hist_gradient_boosting_poisson"
@@ -396,9 +320,9 @@ def show_dss():
                     "WAPE (%)": 100 * values["wape"] if values.get("wape") is not None else None,
                 }
             )
-        with st.expander("Validation dùng cho selection (model gốc)"):
+        with st.expander("Model selection validation"):
             if is_refit:
-                st.caption("Metrics của lần chọn model trước refit; không phải validation của RF đã refit.")
+                st.caption("Original model selection scores; these do not evaluate the refitted model.")
             st.dataframe(
                 pd.DataFrame(metric_rows),
                 width="stretch",
@@ -410,98 +334,52 @@ def show_dss():
                 },
             )
     if is_refit:
-        with st.expander("Đánh giá lịch sử tháng 4/2024 — tách khỏi forecast đang xem"):
+        with st.expander("April 2024 evaluation"):
             st.write(
-                "Kiểm chứng day-ahead 01–30/04 trên cùng 189.360 zone-hour: "
-                "WAPE RF refit 17,87%; RF cũ 18,32%; median 18,06%; D−7 21,85%. "
-                "Mỗi ngày chỉ dùng actual đến D−1; April không dùng chọn model hay tuning."
+                "Day-ahead evaluation on 189,360 zone-hours, 1–30 April: "
+                "WAPE: refitted RF 17.87%; original RF 18.32%; median 18.06%; D−7 21.85%. "
+                "Each forecast uses history through D−1. April was not used for selection or tuning."
             )
             st.caption(
-                "Thí nghiệm RF Q1 cố định, chi tiết trong docs/dss_april_evaluation.md. "
-                "Ranking chỉ cải thiện rất nhẹ so với D−7; không chứng minh hiệu quả điều xe. "
-                "Đây là kết quả cả tháng, không phải độ chính xác của ngày/giờ đang chọn."
+                "Ranking improved only slightly over D−7; this does not establish dispatch effectiveness. "
+                "These full-month scores do not describe the selected day or hour."
             )
-    st.caption(
-        f"Run {run['run_id']} · dữ liệu đọc từ Gate C, không train lại trong dashboard."
-    )
 
 
 def main():
-    st.set_page_config(page_title="NYC Taxi — phân tích", layout="wide")
-    st.title("NYC Yellow Taxi | Phân tích nhu cầu đón")
-    st.caption(
-        "Chỉ đếm chuyến hợp lệ đã nạp và dựng mart. Giờ là giờ địa phương New York; "
-        "thiếu tổ hợp ngoài các tháng đã nạp không được hiểu là 0 chuyến."
-    )
+    st.set_page_config(page_title="NYC Taxi Analytics", layout="wide")
+    st.title("NYC Yellow Taxi | Pickup Analytics")
+    st.caption("Valid yellow taxi pickups · New York local time")
 
     view = st.radio(
-        "Góc nhìn", ["Tổng quan", "OLAP", "Dự báo & khuyến nghị"], horizontal=True
+        "View", ["Overview", "OLAP", "Forecast & priorities"], horizontal=True
     )
-    if view == "Dự báo & khuyến nghị":
+    if view == "Forecast & priorities":
         try:
             show_dss()
         except (psycopg.Error, ConfigurationError, ValueError) as error:
-            st.error(f"Không thể đọc forecast Gate C: {error}")
+            st.error(f"Unable to load forecasts: {error}")
         return
 
     try:
-        (first_date, last_date), available_months, boroughs, zones = reference_data()
+        with st.spinner("Loading data coverage…"):
+            (first_date, last_date), available_months, boroughs, zones = reference_data()
     except (psycopg.Error, ConfigurationError) as error:
-        st.error(f"Không đọc được mart. Hãy kiểm tra PostgreSQL, .env và dbt run: {error}")
+        st.error(f"Unable to connect to analytics data: {error}")
         st.stop()
     if first_date is None:
-        st.info("Chưa có tháng nào được đối soát đủ qua audit, fact và mart. Hãy chạy dbt trước.")
+        st.info("No reconciled data is available. Run the data pipeline first.")
         st.stop()
 
-    with st.sidebar:
-        st.header("Bộ lọc")
-        start_date = st.date_input("Từ ngày", first_date, min_value=first_date, max_value=last_date)
-        end_date = st.date_input("Đến ngày", last_date, min_value=first_date, max_value=last_date)
-        borough_label = st.selectbox("Borough", ["Tất cả", *boroughs])
-        borough = None if borough_label == "Tất cả" else borough_label
-        hour_range = st.slider("Giờ đón", min_value=0, max_value=23, value=(0, 23))
-        available_zones = (
-            zones
-            if borough is None
-            else [zone for zone in zones if zone["borough"] == borough]
-        )
-        zone_options = {
-            f"{zone['borough']} · {zone['zone_name']} (#{zone['pickup_location_id']})": zone[
-                "pickup_location_id"
-            ]
-            for zone in available_zones
-        }
-        chosen_zones = st.multiselect(
-            "Taxi zone (tùy chọn)",
-            list(zone_options),
-            key=f"analytics_zone_filter_{borough_label}",
-        )
-        zone_ids = tuple(zone_options[label] for label in chosen_zones)
-        if st.button("Làm mới dữ liệu"):
-            st.cache_data.clear()
-            st.rerun()
-
-    if start_date > end_date:
-        st.error("Ngày bắt đầu phải không sau ngày kết thúc.")
-        st.stop()
-    missing_months = [
-        month for month in months_between(start_date, end_date) if month not in available_months
-    ]
-    if missing_months:
-        missing_labels = ", ".join(month.strftime("%m/%Y") for month in missing_months)
-        st.warning(
-            f"Chưa xác nhận đủ dữ liệu cho tháng {missing_labels}. "
-            "Khoảng này chưa thể được diễn giải là 0 chuyến."
-        )
-        st.stop()
-    filters = (start_date, end_date, borough, hour_range, zone_ids)
+    filters = analytics_filters(first_date, last_date, available_months, boroughs, zones)
+    st.caption(filter_caption(filters))
     try:
-        if view == "Tổng quan":
+        if view == "Overview":
             show_overview(filters)
         else:
-            show_olap(filters)
+            show_olap_explorer(filters, olap)
     except (psycopg.Error, ConfigurationError, ValueError) as error:
-        st.error(f"Không thể chạy truy vấn phân tích: {error}")
+        st.error(f"Unable to load analytics: {error}")
 
 
 if __name__ == "__main__":

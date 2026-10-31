@@ -4,7 +4,8 @@
 
 - Contract version: `gate-a-v1-draft`
 - Status: implemented and evidenced; pending Person 2 approval
-- Implementation status: RAW, staging, and Airflow implemented; January-March reconciled
+- Implementation status: RAW/staging implemented; January-April reconciled locally.
+  Airflow orchestrates through staging/audit; later stages use dbt/DSS CLI commands.
 - Gate A evidence: `docs/gate_a_handoff.md`
 
 This document freezes the minimum interfaces required to let ingestion,
@@ -18,7 +19,11 @@ materializations, and performance choices remain implementation decisions.
 - Source timestamps represent New York local wall-clock time
 - Source timestamps are exposed as PostgreSQL `timestamp without time zone`
 - The documented interpretation timezone is `America/New_York`
-- Currency values are exposed to warehouse consumers as `numeric(12,2)`
+- Monetary values in staging are guarded and rounded to `numeric(12,2)` bounds;
+  PostgreSQL reports the CASE-expression output type as `numeric` without a
+  column precision modifier. Fact columns explicitly use `numeric(12,2)`.
+  RAW values remain `double precision` for validation before rounding;
+  distance and duration also remain `double precision`.
 - Source row identity is based on dataset, source month, and source row number;
   business-field equality is not used to remove trips
 - Full raw data is never committed to Git

@@ -21,6 +21,16 @@ class AnalyticsRepositoryDatabaseTests(unittest.TestCase):
         if cls.first_date is None:
             raise unittest.SkipTest("No demand mart rows are available")
 
+    def test_weekday_hour_rollup_preserves_filtered_pickups(self):
+        rows,truncated = self.repository.olap(self.first_date,self.last_date,
+            time_level="weekday_hour",geo_level="all",borough="Manhattan",hour_range=(6,10))
+        summary = self.repository.summary(self.first_date,self.last_date,
+            borough="Manhattan",hour_range=(6,10))
+        self.assertFalse(truncated)
+        self.assertLessEqual(len(rows),35)
+        self.assertTrue(all(1<=row["weekday"]<=7 and 6<=row["demand_hour"]<=10 for row in rows))
+        self.assertEqual(sum(row["trip_count"] for row in rows),summary["trip_count"])
+
     def test_overview_and_rollups_match_fact_trips(self):
         repository = self.repository
         first, last = self.first_date, self.last_date

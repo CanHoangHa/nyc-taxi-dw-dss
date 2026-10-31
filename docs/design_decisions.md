@@ -30,13 +30,17 @@ The following decisions are frozen for the initial project scope:
 
 The dimension and fact models use the `dw` schema; the demand mart is a table
 in `mart`. The Person 2 analytical Overview and OLAP views now read that mart
-through a repository layer. Remaining data-quality thresholds, model choice,
-forecast thresholds, infrastructure configuration, and the integrated DSS
-dashboard layout remain intentionally TBD.
+through a repository layer. Current implementation (30 October 2026) includes
+RF model selection, Q1 refit, April evaluation, historical forecast publication
+and an integrated Overview/OLAP/Forecast dashboard. Selection versus actual-fit
+metadata and the current demand-level policy are documented in
+`docs/dss_refit_publication_runbook.md`; April evidence is in
+`docs/dss_april_evaluation.md`. Further full-year loading/cloud deployment are
+optional extensions. The Gate A formal-review status below is unchanged.
 
-## Planned RAW-load transaction boundary
+## Implemented RAW-load transaction boundary
 
-The loader milestone will use three short transaction phases:
+The loader uses three transaction phases:
 
 1. Insert and commit the `started` audit attempt.
 2. Load the complete RAW month and update that attempt to `succeeded` in one

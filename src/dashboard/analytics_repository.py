@@ -23,6 +23,7 @@ TIME_LEVELS = {
     "day": ("demand_date",),
     "hour": ("demand_hour",),
     "day_hour": ("demand_date", "demand_hour"),
+    "weekday_hour": ("extract(isodow from demand_date)::smallint AS weekday", "demand_hour"),
 }
 GEO_LEVELS = {
     "all": (),
