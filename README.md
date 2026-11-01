@@ -20,7 +20,21 @@ dashboard includes chart drill-down, weekday/hour averages, zone ranking and
 forecast comparisons. See [April results](docs/dss_april_evaluation.md) and
 [publication runbook](docs/dss_refit_publication_runbook.md).
 
+OLAP includes an interactive geography map alongside the ranked bar chart.
+Click a borough on either view to explore its zones; **Back to area** rolls
+both views up. Date/hour filters and time drill-down apply to both. Hover
+shows exact pickups in a card docked inside the map, including fullscreen.
+Colours use a log scale, with distinct zero/outside-scope colours. Pickups
+without geometry remain in totals and bars. CARTO background tiles need
+internet access. See [boundary provenance](src/dashboard/assets/README.md).
+
 ## Open an already prepared local demo
+
+The default dashboard theme is Light (`.streamlit/config.toml`), with darker
+chart colours and readable axis labels. Overview's adjacent hour/borough
+charts share a height. OLAP back buttons align to the right edge of their
+charts; the map legend shows pickup counts, while coverage and label notes
+are documented in the analytics guide.
 
 With Docker Desktop running, the existing database loaded, and `.venv`/`.env`
 configured, run from the repository root:
@@ -414,8 +428,10 @@ and coverage view; forecasts read persisted DSS runs, without training in the UI
 
 The mart is sparse and January-April 2024 are currently loaded. An absent
 combination in a month listed by `mart.mart_demand_coverage` means zero
-**valid** pickups; an unlisted month has unavailable data. Use **Reload data** after a dbt rebuild or wait
-up to five minutes for the dashboard cache. Query definitions, four runnable
+**valid** pickups; an unlisted month has unavailable data. Use **Reload data** after a dbt rebuild.
+Reference/coverage data stays cached until this manual refresh or a server restart;
+it does not expire during a demo. Chart queries retain their five-minute cache.
+Query definitions, four runnable
 OLAP examples, field meanings, and reconciliation guidance are in
 `docs/olap_analytics.md`. Choose **Forecast & priorities** after a Gate C
 forecast is published to compare prediction with baseline and review ranked,

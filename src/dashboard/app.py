@@ -25,6 +25,7 @@ from dashboard.analytics_controls import analytics_filters, filter_caption  # no
 from dashboard.olap_view import pickup_chart, show_olap_explorer  # noqa: E402
 from dashboard.pattern_charts import show_forecast_patterns  # noqa: E402
 from dashboard.forecast_controls import planning_scope  # noqa: E402
+from dashboard.appearance import chart_palette, show_chart  # noqa: E402
 from taxi_dw.config import ConfigurationError  # noqa: E402
 from taxi_dw.db import open_connection  # noqa: E402
 
@@ -38,8 +39,10 @@ APPROACH_LABELS = {
 }
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(show_spinner=False)
 def reference_data():
+    # Coverage reconciles the large fact table. Keep this snapshot until an
+    # explicit Reload data (or server restart), rather than expiring mid-demo.
     with open_connection() as connection:
         repository = AnalyticsRepository(connection)
         months = repository.available_months()
@@ -106,9 +109,14 @@ def show_overview(filters):
     day_frame = pd.DataFrame(daily)
     day_frame["demand_date"] = pd.to_datetime(day_frame.demand_date)
     day_frame = day_frame.set_index("demand_date").reindex(pd.date_range(start_date, end_date), fill_value=0).rename_axis("demand_date").reset_index()
-    st.altair_chart(alt.Chart(day_frame).mark_line(color="#66c2ff").encode(
+    daily_max = int(day_frame.trip_count.max())
+    show_chart(alt.Chart(day_frame).mark_line(
+        color=chart_palette()[0],interpolate='linear',strokeJoin='round',strokeCap='round',
+        point=alt.OverlayMarkDef(filled=True,size=14),
+    ).encode(
         x=alt.X("demand_date:T", title="Pickup date", axis=alt.Axis(format="%d/%m")),
-        y=alt.Y("trip_count:Q", title="Valid pickups"),
+        y=alt.Y("trip_count:Q", title="Valid pickups",
+                scale=alt.Scale(domain=[0,max(1,daily_max*1.08)],nice=True)),
         tooltip=[alt.Tooltip("demand_date:T", title="Date", format="%d/%m/%Y"),
                  alt.Tooltip("trip_count:Q", title="Valid pickups", format=",")],
     ).properties(height=300), width="stretch")
@@ -117,10 +125,10 @@ def show_overview(filters):
         st.subheader("Pickups by hour")
         hourly_frame = pd.DataFrame(hourly).set_index("demand_hour").reindex(range(hour_range[0],hour_range[1]+1),fill_value=0).reset_index()
         hourly_frame["Hour"] = hourly_frame.demand_hour.map(lambda hour: f"{hour:02d}:00")
-        st.altair_chart(pickup_chart(hourly_frame,"Hour","Hour (New York)"),width="stretch")
+        show_chart(pickup_chart(hourly_frame,"Hour","Hour (New York)"),width="stretch")
     with right:
         st.subheader("Pickups by borough")
-        st.altair_chart(pickup_chart(pd.DataFrame(by_borough),"borough","Borough",horizontal=True),width="stretch")
+        show_chart(pickup_chart(pd.DataFrame(by_borough),"borough","Borough",horizontal=True).properties(height=300),width="stretch")
     zone_heading, zone_limit = st.columns([5, 1])
     zone_heading.subheader("Top pickup zones")
     top_n = zone_limit.selectbox("Zones to display", [10, 20, 30],
@@ -129,7 +137,7 @@ def show_overview(filters):
     zone_frame["taxi_zone"] = (
         zone_frame["zone_name"] + " (#" + zone_frame["pickup_location_id"].astype(str) + ")"
     )
-    st.altair_chart(pickup_chart(zone_frame,"taxi_zone","Taxi zone",horizontal=True),width="stretch")
+    show_chart(pickup_chart(zone_frame,"taxi_zone","Taxi zone",horizontal=True),width="stretch")
 
 
 def dss_forecasts(forecast_date):
@@ -142,7 +150,8 @@ def show_dss():
     """Render persisted, versioned forecasts without training inside the UI."""
 
     service = DssService()
-    dates = service.available_forecast_dates()
+    # Keep the old exploratory run for audit, but omit it from the demo picker.
+    dates = [day for day in service.available_forecast_dates() if day != date(2024, 3, 16)]
     if not dates:
         st.info("No forecasts available. Publish a forecast before opening this view.")
         return
@@ -250,7 +259,8 @@ def show_dss():
                 title="Pickups",
                 scale=alt.Scale(zero=True),
             ),
-            color=alt.Color("series:N", title=None),
+            color=alt.Color("series:N", title=None,
+                            scale=alt.Scale(domain=["Forecast","Last week (D−7)"],range=list(chart_palette()))),
             strokeDash=alt.StrokeDash("series:N", title=None),
             tooltip=[
                 alt.Tooltip("demand_hour:O", title="Hour"),
@@ -260,7 +270,7 @@ def show_dss():
         )
         .properties(height=360)
     )
-    st.altair_chart(chart, width="stretch")
+    show_chart(chart, width="stretch")
 
     show_forecast_patterns(ranking, filtered, forecast_hours[0], forecast_hours[1], k=review_limit)
 

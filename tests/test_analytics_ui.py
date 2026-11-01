@@ -84,13 +84,17 @@ show_olap_explorer((date(2024,1,1),date(2024,1,2),None,(8,9),()),query)
         click("Drill into time")
         self.assertEqual(app.metric[0].value, total)
         self.assertEqual(app.session_state["olap_path"]["month"], "2024-01-01")
+        self.assertTrue(any(item.value=='Daily pickups · January 2024' for item in app.subheader))
         click("Drill into time")
         self.assertEqual(app.session_state["olap_path"]["day"], "2024-01-01")
+        self.assertTrue(any(item.value=='Hourly pickups · 01 Jan 2024' for item in app.subheader))
         click("← Back in time")
         self.assertIsNone(app.session_state["olap_path"]["day"])
         self.assertEqual(app.metric[0].value, total)
         click("Drill into area")
         self.assertEqual(app.session_state["olap_path"]["borough"], "Bronx")
+        self.assertTrue(any(item.value=='Bronx · Pickups by zone' for item in app.subheader))
+        self.assertTrue(any('Bronx · 01 Jan 2024–02 Jan 2024 · 08:00–09:59' in item.value for item in app.caption))
         click("Drill into area")
         self.assertEqual(app.session_state["olap_path"]["zone"], "1")
         click("Reset exploration")
@@ -115,6 +119,8 @@ show_olap_explorer((date(2024,1,1),date(2024,1,2),None,(8,9),()),query)
         self.assertEqual(spec["layer"][1]["encoding"]["text"]["field"], "trip_count")
         self.assertEqual(bars["encoding"]["x"]["scale"]["domain"][0], 0)
         self.assertGreaterEqual(spec["height"],30*len(rows))
+        self.assertEqual(spec['config']['axis']['labelColor'],'#334155')
+        self.assertEqual(spec['layer'][1]['mark']['color'],'#334155')
 
     def test_missing_coverage_cannot_be_presented_as_zero(self):
         app=AppTest.from_string('''
@@ -141,6 +147,16 @@ with patch("dashboard.app.overview_data",return_value=data):
 ''').run()
         self.assertEqual(len(app.exception),0)
         self.assertEqual([item.value for item in app.metric],["6","2.0","08:00"])
+        import json
+        charts=app.get('vega_lite_chart')
+        daily_spec=json.loads(charts[0].proto.spec)
+        self.assertEqual(daily_spec['mark']['strokeJoin'],'round')
+        self.assertEqual(daily_spec['mark']['interpolate'],'linear')
+        self.assertEqual(daily_spec['encoding']['y']['scale']['domain'][0],0)
+        self.assertEqual(json.loads(charts[1].proto.spec)['height'],
+                         json.loads(charts[2].proto.spec)['height'])
+        self.assertEqual(charts[1].proto.theme,'')
+        self.assertEqual(json.loads(charts[1].proto.spec)['config']['axis']['labelColor'],'#334155')
 
     def test_overview_can_show_thirty_zones_without_changing_filters(self):
         app=AppTest.from_string('''

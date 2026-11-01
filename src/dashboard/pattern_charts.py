@@ -2,6 +2,7 @@
 import altair as alt
 import pandas as pd
 import streamlit as st
+from dashboard.appearance import chart_palette, show_chart
 
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -56,7 +57,7 @@ def weekday_heatmap(grid):
                  alt.Tooltip("average_pickups:Q",title="Avg. pickups/day",format=",.1f"),
                  alt.Tooltip("days:Q",title="Matching dates",format="d")],
     )
-    missing_color = "#374151" if st.context.theme.type == "dark" else "#d1d5db"
+    missing_color = "#d1d5db"
     background = base.mark_rect(color=missing_color,strokeWidth=1,stroke="#64748b")
     cells = base.mark_rect(strokeWidth=1,stroke="#64748b").transform_filter(
         "isValid(datum.average_pickups)").encode(color=alt.Color("average_pickups:Q",
@@ -73,7 +74,7 @@ def show_weekday_pattern(filters, query):
     st.subheader("Average pickups by weekday and hour")
     st.caption(f"{start:%d %b %Y}–{end:%d %b %Y} · Each cell averages all occurrences of that weekday. "
                "Days with no pickups count as zero; grey means the weekday is outside the date range.")
-    st.altair_chart(weekday_heatmap(grid),width="stretch")
+    show_chart(weekday_heatmap(grid),width="stretch")
 
 
 def show_forecast_patterns(ranking, hourly, start, end, k=10):
@@ -85,11 +86,11 @@ def show_forecast_patterns(ranking, hourly, start, end, k=10):
         y=alt.Y("zone_label:N",title=None,sort=order,axis=alt.Axis(labelOverlap=False,labelLimit=280)),
         yOffset=alt.YOffset("series:N",sort=["Forecast","Last week (D−7)"]),
         color=alt.Color("series:N",title=None,scale=alt.Scale(
-            domain=["Forecast","Last week (D−7)"],range=["#66c2ff","#94a3b8"]),legend=alt.Legend(orient="top")),
+            domain=["Forecast","Last week (D−7)"],range=list(chart_palette())),legend=alt.Legend(orient="top")),
         tooltip=[alt.Tooltip("zone_label:N",title="Taxi zone"),alt.Tooltip("series:N",title="Series"),
                  alt.Tooltip("pickups:Q",title="Pickups",format=",.1f")],
     ).properties(height=max(180,44*len(order)))
-    st.altair_chart(chart,width="stretch")
+    show_chart(chart,width="stretch")
     with st.expander("Hourly pattern by zone"):
         if end-start==1:
             st.caption("Select more than one hour to compare patterns across the interval.")
@@ -102,4 +103,4 @@ def show_forecast_patterns(ranking, hourly, start, end, k=10):
                 tooltip=[alt.Tooltip("zone_label:N",title="Taxi zone"),alt.Tooltip("demand_hour:O",title="Hour"),
                          alt.Tooltip("predicted_trip_count:Q",title="Forecast pickups",format=",.1f")],
             ).properties(height=max(150,32*len(order)))
-            st.altair_chart(heatmap,width="stretch")
+            show_chart(heatmap,width="stretch")

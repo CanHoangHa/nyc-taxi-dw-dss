@@ -7,13 +7,17 @@ import streamlit as st
 
 from dashboard.analytics_controls import time_scope
 from dashboard.pattern_charts import show_weekday_pattern
+from dashboard.zone_map import show_pickup_map
+from dashboard.appearance import chart_palette, right_button, show_chart
 
 
 def pickup_chart(frame, field, title, *, horizontal=False, selectable=False):
     """Readable labels and exact values; optional single-node drill selection."""
-    base = alt.Chart(frame).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+    primary, secondary = chart_palette()
+    base = alt.Chart(frame).mark_bar(color=primary,cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
     quantity = alt.Y("trip_count:Q", title="Valid pickups", axis=alt.Axis(format=",.0f"))
-    category = alt.X(f"{field}:N", title=title, sort=None, axis=alt.Axis(labelAngle=0))
+    category = alt.X(f"{field}:N", title=title, sort=None,
+                     axis=alt.Axis(labelAngle=0,labelOverlap='greedy',labelSeparation=8))
     if horizontal:
         maximum = float(frame.trip_count.max()) if len(frame) else 0
         chart = base.encode(x=alt.X("trip_count:Q", title="Valid pickups",
@@ -27,9 +31,9 @@ def pickup_chart(frame, field, title, *, horizontal=False, selectable=False):
                                   alt.Tooltip("trip_count:Q", title="Valid pickups", format=",")])
     if selectable:
         choice = alt.selection_point(name="drill", fields=["node"], toggle=False, on="click", clear="dblclick")
-        chart = chart.add_params(choice).encode(color=alt.condition(choice, alt.value("#66c2ff"), alt.value("#35546b")))
+        chart = chart.add_params(choice).encode(color=alt.condition(choice, alt.value(primary), alt.value(secondary)))
     if horizontal:
-        text_color = "#e2e8f0" if st.context.theme.type == "dark" else "#334155"
+        text_color = "#334155"
         values = alt.Chart(frame).mark_text(align="left", baseline="middle", dx=6,
                                            color=text_color, fontSize=12).encode(
             x="trip_count:Q", y=alt.Y(f"{field}:N", sort="-x"),
@@ -78,6 +82,22 @@ def _clicked(event):
     return selected[0].get("node") if selected else None
 
 
+def exploration_titles(scope, path, geography):
+    start,end,borough,hours,zones = scope
+    area = borough or 'All boroughs'
+    if path['zone']:
+        name = geography.iloc[0]['zone_name'] if not geography.empty else f"Zone #{path['zone']}"
+        area = f"{name} · {area}"
+    time = (f"Hourly pickups · {start:%d %b %Y}" if path['day'] else
+            f"Daily pickups · {date.fromisoformat(path['month']):%B %Y}" if path['month'] else
+            'Monthly pickups')
+    geo = (f"{area} · Pickups by zone" if path['borough'] and not path['zone'] else
+           f"{area} · Pickups" if path['zone'] else f"Pickups by borough · {area}")
+    period = f"{start:%d %b %Y}–{end:%d %b %Y}" if start != end else f"{start:%d %b %Y}"
+    clock = f"{hours[0]:02d}:00–{hours[1]:02d}:59 · New York"
+    return time,geo,f'{area} · {period} · {clock}'
+
+
 def show_olap_explorer(filters, query):
     fingerprint = repr(filters)
     if st.session_state.get("olap_filters") != fingerprint:
@@ -90,8 +110,8 @@ def show_olap_explorer(filters, query):
         st.session_state.olap_revision += 1
         st.rerun()
     path = st.session_state.olap_path
-    st.subheader("Explore pickup demand")
-    st.caption("Click a bar to drill down.")
+    heading, reset = st.columns([4,1],vertical_alignment='center')
+    heading.subheader("Explore pickup demand")
     labels = [f"Month {date.fromisoformat(path['month']):%m/%Y}" if path['month'] else "All months"]
     if path["day"]:
         labels.append(f"Day {date.fromisoformat(path['day']):%d/%m/%Y}")
@@ -99,7 +119,9 @@ def show_olap_explorer(filters, query):
     if path["zone"]:
         labels.append(f"Zone #{path['zone']}")
     st.write(" → ".join(labels))
-    if st.button("Reset exploration"):
+    with reset:
+        reset_clicked = right_button("Reset exploration")
+    if reset_clicked:
         st.session_state.olap_filters = None
         navigate()
 
@@ -108,20 +130,26 @@ def show_olap_explorer(filters, query):
         scope = (*scope[:2], path["borough"], scope[3], scope[4])
     if path["zone"]:
         scope = (*scope[:4], (int(path["zone"]),))
+    geo_level = "zone" if path["borough"] else "borough"
+    geography, _ = _query(query, scope, "all", geo_level)
+    time_label, geo_label, scope_label = exploration_titles(scope,path,geography)
     level = "hour" if path["day"] else "day" if path["month"] else "month"
     time_rows, _ = _query(query, scope, level, "all")
     time_frame = _time_frame(time_rows, scope, level)
     st.metric("Pickups in current scope", f"{int(time_frame.trip_count.sum()):,}")
     time_title = {"month": "Month", "day": "Date", "hour": "Hour (New York)"}[level]
-    time_heading, time_back = st.columns([4, 1])
-    time_heading.subheader(f"By {time_title.lower()}")
-    if time_back.button("← Back in time", disabled=not path["month"]):
+    time_heading, time_back = st.columns([4, 1],vertical_alignment='center')
+    time_heading.subheader(time_label)
+    with time_back:
+        back_time = right_button("← Back in time", disabled=not path["month"])
+    if back_time:
         if path["day"]:
             path["day"] = None
         else:
             path["month"] = None
         navigate()
-    event = st.altair_chart(pickup_chart(time_frame, "Time", time_title, selectable=level != "hour"),
+    st.caption(scope_label)
+    event = show_chart(pickup_chart(time_frame, "Time", time_title, selectable=level != "hour"),
         width="stretch", key=f"olap_time_{fingerprint}_{path}_{st.session_state.olap_revision}",
         on_select="rerun" if level != "hour" else "ignore")
     picked = _clicked(event) if level != "hour" else None
@@ -136,15 +164,22 @@ def show_olap_explorer(filters, query):
         path["month" if level == "month" else "day"] = picked
         navigate()
 
-    geo_level = "zone" if path["borough"] else "borough"
-    geography, _ = _query(query, scope, "all", geo_level)
-    geo_heading, geo_back = st.columns([4, 1])
-    geo_heading.subheader("Pickups by taxi zone" if geo_level == "zone" else "Pickups by borough")
-    if geo_back.button("← Back to area", disabled=not path["borough"]):
+    geo_heading, geo_back = st.columns([4, 1],vertical_alignment='center')
+    geo_heading.subheader(geo_label)
+    with geo_back:
+        back_area = right_button("← Back to area", disabled=not path["borough"])
+    if back_area:
         if path["zone"]:
             path["zone"] = None
         else:
             path["borough"] = None
+        navigate()
+    st.caption(scope_label)
+    map_pick = show_pickup_map(geography.to_dict('records'), scope[2], scope[4],
+        geo_level=geo_level, key=f"olap_map_{fingerprint}_{path}_{st.session_state.olap_revision}",
+        selectable=not path["zone"])
+    if map_pick:
+        path["borough" if geo_level == "borough" else "zone"] = map_pick
         navigate()
     if not geography.empty and geography.trip_count.sum():
         if geo_level == "borough":
@@ -156,7 +191,7 @@ def show_olap_explorer(filters, query):
         display = geography.nlargest(20, "trip_count")
         if len(geography) > 20:
             st.caption(f"Top 20 of {len(geography)} zones. Use the selector for all zones.")
-        event = st.altair_chart(pickup_chart(display, "Area", "Area", horizontal=True, selectable=not path["zone"]),
+        event = show_chart(pickup_chart(display, "Area", "Area", horizontal=True, selectable=not path["zone"]),
             width="stretch", key=f"olap_geo_{fingerprint}_{path}_{st.session_state.olap_revision}",
             on_select="rerun" if not path["zone"] else "ignore")
         picked = _clicked(event) if not path["zone"] else None

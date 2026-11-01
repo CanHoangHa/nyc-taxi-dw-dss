@@ -63,6 +63,39 @@ readable on the shared zero-based linear scale even when Manhattan dominates.
 Overview offers a 10 / 20 / 30 zone selector; this only changes the descriptive
 chart length and does not modify the DSS evaluation's fixed K.
 
+The geography section in OLAP includes a map and the ranked bar chart at the
+same grain. It starts with borough totals; clicking a borough on either view
+opens its zones, and clicking a zone focuses that zone. **Back to area** rolls
+both views up one level. All navigation remains within the applied filters
+and selected time scope. Changing an applied filter resets exploration.
+Each time/geography heading names the current month, day, borough or zone.
+A local scope line beside each section includes the applied dates and hours,
+so geography/time drill-down remains clear without scrolling to the sidebar.
+Zero-pickup areas remain on the map; outside-scope areas are grey. Unknown
+areas without geometry remain in the KPI and bar chart. The map uses local TLC boundaries, log colour
+intensity and CARTO tiles; hover information is docked inside the map so it
+stays within the frame in normal and fullscreen views. Overview retains its
+bar charts, and Forecast retains its ranking and D−7 comparisons.
+
+The basemap omits street/place names. Our own labels show in-scope boroughs,
+or the top five positive-pickup zones ranked by current totals, with plain
+names (ties ordered by LocationID). A single selected zone is labelled even
+at zero. Top-five names are not hidden for overlap: bold dark text uses white
+background boxes for contrast on dark map fills. Hover still identifies every area.
+Label visibility never filters pickups.
+
+Light is the default theme. Shared chart styling increases axis, legend and
+bar contrast; adjacent Overview charts have the same height. Back controls
+align to the right edge of their chart headings. The map has a numeric colour
+legend plus zero/outside-selection swatches. Technical scale/coverage notes
+are documented here rather than displayed in a Map details control.
+Pickups without geometry remain in totals and bars, but cannot be drawn on the map.
+
+The map colour legend is vertical beside the map, matching the heatmap's
+continuous legend style. It includes multiple exact count ticks with short
+tick marks; positions follow the map's logarithmic colour transform. Heatmap
+legends remain linear because they display a different measure (daily averages).
+
 Overview KPIs are valid pickup count, average pickups per **calendar day** in
 the selected interval (including zero-pickup days), and busiest pickup hour
 aggregated across those days. Tied busiest hours use the earliest hour. These
@@ -71,8 +104,10 @@ when selecting a single zone.
 
 Reference loading now checks coverage once instead of twice and reuses the
 same database connection for reference queries. Coverage still performs the
-original audit/fact/mart reconciliation; no checks were weakened. Data caches
-last five minutes. **Reload data** explicitly clears caches after a pipeline
+original audit/fact/mart reconciliation; no checks were weakened. Reference
+and coverage snapshots do not expire on a timer, avoiding heavy reconciliation
+in the middle of a demo. Chart-query caches still last five minutes.
+**Reload data** explicitly clears all data caches after a pipeline
 update; it is separate from filter submission. The local `.env.example` uses
 `127.0.0.1`: on this Windows machine, `localhost` incurred about five seconds
 per connection versus about 0.02 seconds over IPv4. Restart an already-running
