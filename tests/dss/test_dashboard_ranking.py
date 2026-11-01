@@ -20,11 +20,12 @@ rows=forecasts()
 rows["demand_ratio"]=1.0
 rows["recommendation"]="label"
 rows["recommendation_reason"]="reason"
-with patch("dashboard.app.DssService.available_forecast_dates", return_value=[date(2024,4,30)]), \\
+with patch("dashboard.app.DssService.available_forecast_dates", return_value=[date(2024,4,30), date(2024,3,16)]), \\
      patch("dashboard.app.dss_forecasts", return_value=(run, rows, {"selection_validation":{"random_forest":{"wape":0.1772}}}, zone_reference())):
     show_dss()
 ''', default_timeout=30).run()
         self.assertEqual(len(app.exception), 0)
+        self.assertEqual(app.selectbox(key="planning_date").options,["30/04/2024"])
         captions = " ".join(item.value for item in app.caption)
         self.assertIn("31/03/2024", captions)
         self.assertIn("337.52", captions)
@@ -54,7 +55,7 @@ if st.session_state.get("drop_zone", False):
 rows["demand_ratio"] = 1.0
 rows["recommendation"] = "hourly label"
 rows["recommendation_reason"] = "hourly explanation"
-with patch("dashboard.app.DssService.available_forecast_dates", return_value=[date(2024,3,16)]), \\
+with patch("dashboard.app.DssService.available_forecast_dates", return_value=[date(2024,4,1)]), \\
      patch("dashboard.app.dss_forecasts", return_value=(run, rows, {}, zone_reference())):
     show_dss()
 ''', default_timeout=30).run()
@@ -99,7 +100,7 @@ for zone in range(10,22):
 rows=pd.concat(pieces,ignore_index=True)
 reference=rows[["pickup_location_id","borough","zone_name","is_actionable"]].drop_duplicates()
 run=dict(model_name="random_forest",model_version="1",feature_version="1",recommendation_version="1",run_id="test")
-with patch("dashboard.app.DssService.available_forecast_dates",return_value=[date(2024,3,16)]), \\
+with patch("dashboard.app.DssService.available_forecast_dates",return_value=[date(2024,4,1)]), \\
  patch("dashboard.app.dss_forecasts",return_value=(run,rows,{},reference)):
  show_dss()
 ''').run()

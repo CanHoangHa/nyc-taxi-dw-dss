@@ -15,6 +15,7 @@ dbt-postgres>=1.11,<1.12
 # Person 2 analytical and OLAP dashboard.
 streamlit>=1.65,<2.0
 altair>=5.0,<7.0
+pydeck>=0.9,<1.0
 
 # Person 3 demand forecasting and evaluation.
 pandas>=2.2,<3.0
