@@ -1,15 +1,12 @@
-# Data directory
+# Dữ liệu mẫu CO4031 – Nhóm 10 – Lớp L02
 
-The [CO4031 Group 10 sample data folder](https://drive.google.com/drive/folders/1Ca045Gt2O17jTH5IH1ifB-tucfD3rOmI?usp=sharing) is the submission link for these files:
+**Link Google Drive để tải dữ liệu mẫu**
 
-- `yellow_tripdata_2024-01.parquet` contains the January 2024 trips. Place it in
-  `data/raw/yellow/2024/01/` relative to the project root. In the submission ZIP,
-  the full path from the ZIP root is `src/data/raw/yellow/2024/01/`.
-- `taxi_zone_lookup.csv` contains the TLC taxi zone reference. The project
-  already includes this file at `src/dbt/seeds/taxi_zone_lookup.csv` relative
-  to the project root.
+<https://drive.google.com/drive/folders/1Ca045Gt2O17jTH5IH1ifB-tucfD3rOmI?usp=sharing>
 
-The report's forecasting and evaluation use January through April 2024. For
-the remaining months, see step 2 of the project README (`src/README.md` in the
-submission ZIP). Keep monthly Parquet files under the Git-ignored `data/raw/`
-directory.
+## Tệp dữ liệu
+
+- **yellow_tripdata_2024-01.parquet** chứa dữ liệu chuyến đi NYC Yellow Taxi tháng 01/2024. Đặt tệp vào thư mục data/raw/yellow/2024/01/ tính từ gốc dự án. Nếu dùng gói nộp, đường dẫn tính từ gốc gói là src/data/raw/yellow/2024/01/. Tạo thư mục này nếu chưa có.
+- **taxi_zone_lookup.csv** là bảng tra cứu mã khu vực taxi. Bản dùng để chạy dự án đã có sẵn. [Tệp tra cứu trong repo](../src/dbt/seeds/taxi_zone_lookup.csv)
+
+Dữ liệu tháng 01 dùng để chạy thử quy trình nạp, dựng kho và xem dashboard OLAP. Để tái lập kết quả dự báo và đánh giá trong báo cáo, cần dữ liệu tháng 01–04/2024. Cách nạp các tháng còn lại nằm ở bước 2. [Hướng dẫn chạy dự án](../README.md)
