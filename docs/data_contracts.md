@@ -3,8 +3,10 @@
 ## Status
 
 - Contract version: `gate-a-v1-draft`
-- Status: proposed for Person 2 review
-- Implementation status: not started
+- Status: implemented and evidenced; pending Person 2 approval
+- Implementation status: RAW/staging implemented; January-April reconciled locally.
+  Airflow orchestrates through staging/audit; later stages use dbt/DSS CLI commands.
+- Gate A evidence: `docs/gate_a_handoff.md`
 
 This document freezes the minimum interfaces required to let ingestion,
 warehouse, and DSS work proceed independently. Physical table definitions,
@@ -17,14 +19,18 @@ materializations, and performance choices remain implementation decisions.
 - Source timestamps represent New York local wall-clock time
 - Source timestamps are exposed as PostgreSQL `timestamp without time zone`
 - The documented interpretation timezone is `America/New_York`
-- Currency values are exposed to warehouse consumers as `numeric(12,2)`
+- Monetary values in staging are guarded and rounded to `numeric(12,2)` bounds;
+  PostgreSQL reports the CASE-expression output type as `numeric` without a
+  column precision modifier. Fact columns explicitly use `numeric(12,2)`.
+  RAW values remain `double precision` for validation before rounding;
+  distance and duration also remain `double precision`.
 - Source row identity is based on dataset, source month, and source row number;
   business-field equality is not used to remove trips
 - Full raw data is never committed to Git
 
 ## Supporting contract: `audit.etl_batch`
 
-- Producer: Python ingestion
+- Producer: Python ingestion and post-staging audit write-back
 - Consumers: pipeline operations, Airflow, reconciliation, and documentation
 - Grain: one ingestion attempt for one source month
 
@@ -46,8 +52,14 @@ materializations, and performance choices remain implementation decisions.
 | `status` | `text` | `started`, `succeeded`, `failed`, or `skipped` |
 | `error_message` | `text` | Failure context, otherwise null |
 
-Final constraints and the mechanism used for dbt to update classification counts
-are TBD.
+Database constraints enforce valid status values, consistent completion
+timestamps, non-negative counts, successful source-to-RAW count equality, and
+complete classification-count reconciliation when those three counts are
+populated. After staging tests pass, `taxi_dw.staging_audit` reconciles all
+loaded batches and writes these three counts to their `succeeded` records in
+one transaction. Skipped attempts keep null DQ counts because they loaded
+zero new rows. Audit `status` describes RAW ingestion; the Airflow DAG status
+separately records staging/test failures.
 
 ## Ingestion output: `raw.yellow_trip`
 
@@ -90,10 +102,21 @@ congestion_surcharge
 Airport_fee
 ```
 
-The January source-profile task will confirm exact Parquet physical types and
-field casing before RAW DDL is implemented. Missing required fields fail source
-validation; unexpected additional fields are recorded and require an explicit
-contract decision.
+The January 2024 source profile confirmed all 19 expected fields, with no
+missing or unexpected fields. The reproducible evidence is recorded in
+`docs/profiles/yellow_tripdata_2024_01.md`.
+
+Observed Parquet types are:
+
+- `int32`: `VendorID`, `PULocationID`, and `DOLocationID`
+- `int64`: `passenger_count`, `RatecodeID`, and `payment_type`
+- `timestamp[us]`: pickup and drop-off timestamps
+- `large_string`: `store_and_fwd_flag`
+- `double`: distance and all monetary source fields
+
+RAW DDL preserves these source-compatible shapes in `raw.yellow_trip`. Missing
+required fields fail source validation; unexpected additional fields are
+recorded and require an explicit contract decision.
 
 ### Required lineage fields
 
@@ -123,10 +146,14 @@ Planned source-row uniqueness:
   controlled operation; its implementation is deferred to the incremental-load
   milestone.
 - A failed attempt must not expose a partially committed RAW batch.
+- A skipped attempt records `loaded_row_count = 0` because it commits no new
+  RAW rows.
+- PostgreSQL advisory locking serializes attempts for the same dataset, year,
+  and month across all ingestion transactions.
 
 ## Shared reference: Taxi Zone Lookup
 
-- Source artifact: `data/reference/taxi_zone_lookup.csv`
+- Source artifact and dbt seed: `src/dbt/seeds/taxi_zone_lookup.csv`
 - Producer: Person 1 makes the reviewed reference file available to dbt
 - Consumers: Person 1 staging validation and Person 2 `dim_taxi_zone`
 - Grain: one TLC `LocationID`
@@ -140,7 +167,7 @@ Minimum canonical fields:
 | `zone_name` | `text` | Taxi-zone display name |
 | `service_zone` | `text` | TLC service-zone classification |
 
-The dbt seed/source name and seed path remain TBD until dbt project setup.
+The seed is exposed to dbt as `taxi_zone_lookup` in the `staging` schema.
 Person 1 owns source availability and contract validation; Person 2 owns the
 warehouse dimension built from it.
 
@@ -194,20 +221,36 @@ Rejected records are structurally unusable for trip analysis, including:
 - Null pickup timestamp
 - Null drop-off timestamp
 - Drop-off timestamp earlier than pickup timestamp
-- Required values that cannot be converted to the canonical type
+- Values outside the range of their canonical `smallint` or `numeric(12,2)`
+  type
 
 Quarantined records are parseable but analytically questionable, including:
 
+- Pickup timestamp outside its source month
 - Pickup or drop-off location missing from the Taxi Zone Lookup
 - Negative trip distance
 - Non-positive or unusually long duration
 - Negative monetary values
+- Non-finite distance or monetary values (`NaN`, `Infinity`, or `-Infinity`)
 
 Valid records satisfy all implemented rejection and quarantine rules.
 
-Exact upper bounds for distance and duration remain TBD until January profiling.
+Pickup timestamps must fall on or after the first day of `source_year` and
+`source_month`, and before the first day of the following month. Drop-off may
+cross the month boundary; classification is anchored to pickup time.
+
+Durations over 180 minutes are quarantined. This conservative upper bound is
+about three times the January sampled p99 and can be revised with documented
+evidence from additional months. No upper distance bound is imposed yet.
 Negative monetary records are quarantined rather than silently removed because
-they may represent adjustments or disputes.
+they may represent adjustments or disputes. Negative checks use the RAW
+`double precision` values before rounding to `numeric(12,2)`, so a small value
+such as `-0.001` cannot become valid after being displayed as `0.00`.
+
+Canonical casts are guarded by range checks. Out-of-range values become null in
+staging and receive `CANONICAL_TYPE_OUT_OF_RANGE` instead of aborting the dbt
+model. Non-finite values become null and receive
+`NON_FINITE_NUMERIC_VALUE`; the RAW row remains unchanged for audit.
 
 ### Reconciliation invariant
 
@@ -228,9 +271,10 @@ Every RAW row must appear exactly once in this classification.
 - Consumer: Person 2 / dbt warehouse models
 - Grain: one normalized trip record with `dq_status = 'valid'`
 
-This is the Gate A interface. It exposes the canonical fields from
-`stg_yellow_trip` and excludes `dq_status` values other than `valid`. Physical
-materialization as a view or table is TBD.
+This is the Gate A interface. It is materialized as a view, exposes the
+canonical fields from `stg_yellow_trip`, and excludes `dq_status` values other
+than `valid`. `stg_yellow_trip` is materialized as a table so its classification
+does not have to be recalculated for each warehouse query.
 
 Gate A is ready when:
 
@@ -249,8 +293,8 @@ Gate A is ready when:
 
 The fact is expected to consume `stg_yellow_trip_valid`, retain
 `trip_source_key`, and reference pickup and drop-off date, time, and taxi-zone
-roles plus vendor and payment-type dimensions. Exact surrogate keys and the
-final measure set are owned by Person 2 and remain TBD.
+roles plus vendor and payment-type dimensions. Dimension keys, unknown members,
+and the selected fact measures are defined in `docs/dimensional_model.md`.
 
 Person 1 guarantees canonical timestamps, business identifiers, measures, and
 lineage. Person 1 does not generate warehouse surrogate keys.
@@ -271,7 +315,15 @@ Minimum planned fields:
 | `pickup_location_id` | TLC business identifier |
 | `borough` | Zone borough |
 | `zone_name` | Zone display name |
+| `is_recommendation_eligible` | True for TLC zone IDs 1–263 only |
 | `trip_count` | Count of valid pickup trips in the grain |
 
-Zero-demand representation, additional metrics, lag features, and physical
-materialization remain TBD and are owned by Persons 2 and 3 at Gate B.
+The implemented mart is a dbt table in schema `mart`. It contains observed
+positive-demand combinations only; absence means zero only inside a known
+fully loaded source month listed in `mart.mart_demand_coverage`. This view
+exposes `source_year`, `source_month`, inclusive `coverage_start_date` and
+`coverage_end_date`, and `valid_trip_count`, after audit/fact/mart monthly
+totals agree. Person 3 builds the dense date-hour-zone grid for forecasting
+using only eligible zones 1–263. See `docs/gate_b_handoff.md` for the coverage,
+special-zone, and day-ahead publication rules.
+Additional metrics and lag features remain to be agreed at Gate B.

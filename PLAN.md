@@ -6,9 +6,22 @@ This document is the shared implementation plan for the three-person team. It
 defines the frozen scope, responsibility boundaries, dependency order,
 milestones, handoff contracts, and acceptance criteria.
 
-The project is currently in the planning and repository-setup stage. Nothing in
-this plan implies that ingestion, infrastructure, warehouse models, forecasting,
-or dashboard features have already been implemented.
+Implementation status (30 October 2026): local PostgreSQL, January-April 2024
+RAW ingestion and dbt staging, ordered monthly backfill, and local Airflow
+orchestration through staging/audit are implemented. The five dimensions,
+`fact_trip`, the zone-hour demand mart, and analytical Overview/OLAP views
+are implemented on the four-month local prototype. Gate B was accepted by
+Person 3 on 9 October (see `docs/gate_b_handoff.md`). Random Forest selection,
+fixed Q1 refit, April evaluation and historical forecast publication are
+implemented. Overview/OLAP now have submitted filters, chart drill-down and a
+weekday/hour heatmap; Forecast includes zone ranking, D−7 comparisons and an
+optional zone/hour heatmap. Airflow stops at staging/audit; warehouse/mart and
+DSS use the documented CLI commands.
+
+Remaining work is team integration/review, a clean-machine rehearsal, updated
+submission materials and a presentation/demo. Controlled source replacement
+is still not implemented. Full-year loading and cloud deployment are optional
+extensions, not prerequisites for the current January-April demonstration.
 
 ## 2. Frozen project scope
 
@@ -19,7 +32,7 @@ an operator answer:
 
 > Where and when will NYC Yellow Taxi pickup demand be high tomorrow?
 
-The DSS will eventually recommend where taxi availability should be prioritized.
+The DSS ranks zones to help prioritize taxi availability for a selected interval.
 It will not claim to estimate unmet demand, optimize routes, or calculate profit.
 
 ### Data scope
@@ -29,7 +42,8 @@ It will not claim to estimate unmet demand, optimize routes, or calculate profit
 - NYC Taxi Zone Lookup as reference data
 - January 2024 for the first vertical slice
 - January-March 2024 for the incremental-ingestion prototype
-- Full year 2024 only after the vertical slice and incremental pipeline are stable
+- April 2024 for fixed-model, day-ahead evaluation and a historical demo
+- Further 2024 months only as an explicitly scoped extension
 
 Full raw trip files must not be committed to Git.
 
@@ -362,6 +376,13 @@ Exit criteria:
 
 ### Milestone 3 - Incremental ingestion
 
+Person 1 progress (2026-10-07): the January-March CLI prototype and ordered
+backfill are implemented and evidenced in
+`docs/profiles/yellow_tripdata_2024_q1_dq.md`. Airflow orchestration and
+automatic audit DQ-count write-back were added on 2026-10-08; see
+`docs/airflow_runbook.md`. The staging models still rebuild the complete
+loaded RAW dataset. Controlled source replacement remains deferred.
+
 Deliverables:
 
 - January-March 2024 ingestion
@@ -487,22 +508,23 @@ Suggested evidence of contribution:
 
 ## 11. Intentionally unresolved decisions
 
-These decisions are not implementation blockers until their owning milestone,
-but they must be resolved and documented before dependent work begins:
+Types/DQ, dimensional keys/time resolution, forecast features, chronological
+splits, demand-level rules and local Docker topology are implemented. Their
+current definitions live in `docs/data_contracts.md`, `docs/dimensional_model.md`,
+`docs/dss_april_protocol.md` and `docs/dss_refit_publication_runbook.md`.
 
-- Final source and staging column types
-- Data-quality thresholds for duration, distance, and monetary anomalies
-- Unknown-zone handling
-- Surrogate-key and slowly changing dimension policies
-- Exact time-dimension resolution and NYC daylight-saving-time handling
-- Monthly source-replacement procedure
-- PostgreSQL physical partitioning and indexing
-- Forecast feature set
-- Train, validation, and test date boundaries
-- Model-selection threshold relative to the baseline
-- Demand-level thresholds
-- Final dashboard layout and deployment method
-- Final dependency versions and Docker topology
+Remaining decisions or acceptance work:
+
+- A transactional monthly source-replacement procedure, if needed; checksum
+  changes currently fail safely without replacing existing RAW.
+- Additional data capacity/indexing only when measured workload justifies it.
+- Reproducing setup and the demo on another team member's machine, including
+  separate model-artifact/manifest handoff or documented reproduction.
+- Final report, slides, demo script and team review of the shared interfaces.
+- Optional cloud deployment and any later full-year extension.
+
+The milestone descriptions above record the original implementation sequence;
+full-year expansion is deferred beyond the current prototype.
 
 ## 12. Definition of project success
 

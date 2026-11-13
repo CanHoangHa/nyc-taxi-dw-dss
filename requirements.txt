@@ -1,1 +1,27 @@
-# Python dependencies will be pinned when implementation begins.
+# Milestone P1.1: PostgreSQL connectivity.
+psycopg[binary]>=3.2,<4.0
+python-dotenv>=1.0,<2.0
+
+# Milestone 1: source Parquet profiling and bounded-memory reads.
+pyarrow>=18.0,<26.0
+
+# Milestone 2: streamed source downloads with explicit timeouts.
+httpx>=0.27,<1.0
+
+# Milestone 7: PostgreSQL staging transformations and data-quality tests.
+dbt-core>=1.11,<1.12
+dbt-postgres>=1.11,<1.12
+
+# Person 2 analytical and OLAP dashboard.
+streamlit>=1.65,<2.0
+altair>=5.0,<7.0
+pydeck>=0.9,<1.0
+
+# Person 3 demand forecasting and evaluation.
+pandas>=2.2,<3.0
+numpy>=2.0,<3.0
+scikit-learn>=1.5,<2.0
+joblib>=1.4,<2.0
+tomli>=2.0,<3.0; python_version < "3.11"
+
+# Airflow is pinned in src/airflow/Dockerfile and runs in Docker.

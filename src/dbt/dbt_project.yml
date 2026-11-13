@@ -1,0 +1,30 @@
+name: nyc_taxi_dw
+version: 1.0.0
+config-version: 2
+
+profile: nyc_taxi_dw
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+clean-targets:
+  - target
+  - logs
+
+models:
+  nyc_taxi_dw:
+    staging:
+      +materialized: view
+    warehouse:
+      +materialized: table
+      +schema: dw
+    marts:
+      +materialized: table
+      +schema: mart
+
+seeds:
+  nyc_taxi_dw:
+    taxi_zone_lookup:
+      +column_types:
+        location_id: integer

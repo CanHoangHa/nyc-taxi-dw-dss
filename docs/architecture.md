@@ -36,6 +36,9 @@ NYC TLC monthly Parquet
 - Orchestrate pipeline steps only
 - Invoke independently testable Python and dbt operations
 - Avoid embedding data-processing or business logic in DAG files
+- The optional Compose profile runs Airflow standalone locally.
+- `yellow_taxi_ingestion` orchestrates a selected 2024 month range through
+  RAW, zone seed, staging, staging tests, and audit classification counts.
 
 ### DSS
 
@@ -59,9 +62,11 @@ builds dimensions and facts from this interface rather than querying RAW.
 
 ### Gate B: warehouse to DSS
 
-Person 2 provides `mart_zone_hour_demand` at date x hour x pickup-zone grain.
-Person 3 builds forecasting features and recommendations from that interface
+Person 2 provides sparse `mart_zone_hour_demand` at date x hour x pickup-zone
+grain, monthly `mart_demand_coverage`, and a recommendation-eligibility flag.
+Person 3 builds forecasting features and recommendations from those interfaces
 rather than querying `fact_trip` directly.
 
-Implementation details, deployment topology, and service configuration remain
-TBD.
+PostgreSQL and the optional Airflow service run through Docker Compose.
+Airflow metadata uses its own local-development volume, separate from trip
+data. Warehouse/DSS/dashboard deployment remains to be finalized.

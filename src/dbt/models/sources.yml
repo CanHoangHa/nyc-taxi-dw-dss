@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: yellow_trip
+        description: Yellow Taxi rows loaded without business transformations.
+        columns:
+          - name: batch_id
+            data_tests:
+              - not_null
+          - name: source_row_number
+            data_tests:
+              - not_null
+  - name: audit
+    schema: audit
+    tables:
+      - name: etl_batch
+        description: Ingestion attempts and reconciled staging classification counts.
